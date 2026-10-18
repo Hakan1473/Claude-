@@ -715,3 +715,17 @@ button {
     transform: rotate(1turn);
   }
 }
+
+/* Voice orb glass (see VoiceOrb.tsx) */
+@layer components {
+  .orb-shell {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28), inset 0 -6px 18px rgba(0, 0, 0, 0.22),
+      0 10px 30px -12px rgba(0, 0, 0, 0.35);
+    transform: translateZ(0);
+  }
+  .orb-gloss {
+    background: radial-gradient(ellipse 62% 36% at 50% 14%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%),
+      radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 45%);
+    mix-blend-mode: screen;
+  }
+}

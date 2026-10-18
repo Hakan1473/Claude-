@@ -1,4 +1,5 @@
-import type { FC } from 'react';
+import { useCallback, useRef, type FC } from 'react';
+import { VoiceOrb } from './VoiceOrb';
 import { Mic, MicOff, Loader2 } from 'lucide-react';
 import type { SessionState } from '../types/interpreter';
 
@@ -9,6 +10,8 @@ interface InterpreterButtonProps {
   audioLevel?: number;
   isMuted?: boolean;
   onToggleMute?: () => void;
+  /** Loudness of the interpreter's spoken output (0–1), polled by the voice orb. */
+  getOutputLevel?: () => number;
   /** Horizontal layout used on wide screens to leave room for the dual panes. */
   compact?: boolean;
 }
@@ -26,8 +29,6 @@ const TONE: Record<Tone, { text: string; dot: string; glow: string; ring: string
   error: { text: 'text-sys-red', dot: 'bg-sys-red', glow: 'bg-sys-red', ring: 'border-sys-red/50' },
 };
 
-// Symmetrical waveform (Apple Voice Memos style)
-const SOUND_BARS = [0.3, 0.5, 0.75, 0.95, 1, 0.95, 0.75, 0.5, 0.3];
 
 export const InterpreterButton: FC<InterpreterButtonProps> = ({
   state,
@@ -36,6 +37,7 @@ export const InterpreterButton: FC<InterpreterButtonProps> = ({
   audioLevel = 0,
   isMuted = false,
   onToggleMute,
+  getOutputLevel,
   compact = false,
 }) => {
   const isActive = state !== 'idle' && state !== 'error';
@@ -103,98 +105,45 @@ export const InterpreterButton: FC<InterpreterButtonProps> = ({
   const tone = TONE[status.tone];
   const isLive = isActive && !isMuted;
 
-  const sizeClass = compact ? 'w-[76px] h-[76px]' : 'w-[84px] h-[84px] sm:w-[100px] sm:h-[100px]';
+  const sizeClass = compact ? 'w-[84px] h-[84px]' : 'w-[96px] h-[96px] sm:w-[112px] sm:h-[112px]';
+
+  // The orb follows your voice while listening and the interpreter's voice while it speaks
+  const inputLevelRef = useRef(normLevel);
+  inputLevelRef.current = isMuted ? 0 : normLevel;
+  const outputGetterRef = useRef(getOutputLevel);
+  outputGetterRef.current = getOutputLevel;
+  const getOrbLevel = useCallback(() => {
+    const out = outputGetterRef.current?.() ?? 0;
+    return Math.max(inputLevelRef.current, out);
+  }, []);
+
+  const iconSize = compact ? 'w-7 h-7' : 'w-8 h-8 sm:w-9 sm:h-9';
 
   const button = (
-    <div className="relative flex items-center justify-center shrink-0">
-      {/* Apple Intelligence–style glow: breathes with the voice level while the line is live */}
-      {isLive && (
-        <>
-          <span
-            aria-hidden="true"
-            style={{ transform: `scale(${1 + normLevel * 0.28})`, opacity: 0.45 + normLevel * 0.45 }}
-            className="absolute -inset-3 transition-[transform,opacity] duration-150 ease-out"
-          >
-            <span className="ai-glow inset-0" />
-          </span>
-          <span aria-hidden="true" className="ai-ring -inset-[3px] opacity-90" />
-        </>
-      )}
-
-      {/* Muted / connecting: calm single-tone glow */}
-      {isActive && !isLive && (
-        <span aria-hidden="true" className={`absolute inset-0 rounded-full blur-2xl opacity-30 ${tone.glow}`} />
-      )}
-
-      {/* Calm ripple rings while the line is open */}
-      {isLive && (
-        <>
-          <span aria-hidden="true" className={`absolute inset-0 rounded-full border-2 anim-ripple ${tone.ring}`} />
-          <span
-            aria-hidden="true"
-            className={`absolute inset-0 rounded-full border-2 anim-ripple ${tone.ring}`}
-            style={{ animationDelay: '1s' }}
-          />
-        </>
-      )}
-
-      {/* Idle invitation halo */}
-      {!isActive && !isMuted && (
-        <span aria-hidden="true" className="absolute -inset-2 rounded-full bg-accent/25 anim-breathe" />
-      )}
-
-      <button
-        onClick={onToggle}
-        type="button"
-        aria-label={isActive ? 'Tercümanı Durdur' : 'Tercümanı Başlat'}
-        title={isActive ? 'Tercümanı Durdur' : 'Tercümanı Başlat'}
-        className={`relative z-10 ${sizeClass} rounded-full flex items-center justify-center cursor-pointer transition-[transform,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.94] ${
-          isActive
-            ? 'bg-surface shadow-[0_0_0_1px_var(--hairline),0_12px_32px_-10px_rgba(0,0,0,0.3)]'
-            : isMuted
-            ? 'bg-sys-gray text-white shadow-[0_12px_30px_-10px_rgba(0,0,0,0.35)]'
-            : 'mic-hero text-white hover:brightness-[1.05]'
-        }`}
-      >
+    <button
+      onClick={onToggle}
+      type="button"
+      aria-label={isActive ? 'Tercümanı Durdur' : 'Tercümanı Başlat'}
+      title={isActive ? 'Tercümanı Durdur' : 'Tercümanı Başlat'}
+      className={`relative shrink-0 ${sizeClass} rounded-full cursor-pointer transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:scale-[1.03] active:scale-[0.94]`}
+    >
+      <VoiceOrb tone={status.tone} getLevel={getOrbLevel} className="w-full h-full">
         {state === 'connecting' ? (
-          <Loader2 className="w-8 h-8 animate-spin text-label-2" strokeWidth={2} />
+          <Loader2 className={`${iconSize} animate-spin drop-shadow`} strokeWidth={2} />
         ) : isActive ? (
-          // Stop glyph — a rounded red square, exactly like Voice Memos
+          // Frosted stop glyph floating on the liquid
           <span
-            className={`block bg-sys-red transition-all duration-300 ${
-              compact ? 'w-7 h-7 rounded-[8px]' : 'w-8 h-8 sm:w-9 sm:h-9 rounded-[9px]'
+            className={`block bg-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.2)] ${
+              compact ? 'w-[22px] h-[22px] rounded-[6px]' : 'w-6 h-6 sm:w-7 sm:h-7 rounded-[7px]'
             }`}
           />
         ) : isMuted ? (
-          <MicOff className={compact ? 'w-7 h-7' : 'w-8 h-8 sm:w-9 sm:h-9'} strokeWidth={2} />
+          <MicOff className={`${iconSize} drop-shadow`} strokeWidth={2} />
         ) : (
-          <Mic className={compact ? 'w-7 h-7' : 'w-8 h-8 sm:w-9 sm:h-9'} strokeWidth={2} />
+          <Mic className={`${iconSize} drop-shadow`} strokeWidth={2} />
         )}
-      </button>
-    </div>
-  );
-
-  const waveform = (
-    <div
-      aria-hidden="true"
-      className={`h-6 flex items-center justify-center gap-[3px] transition-opacity duration-300 ${
-        isLive ? 'opacity-100' : 'opacity-0'
-      }`}
-    >
-      {SOUND_BARS.map((mult, i) => {
-        const h = isLive ? Math.min(22, Math.round(4 + mult * (normLevel * 16 + 2))) : 4;
-        return (
-          <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: static decorative bars
-            key={i}
-            style={{ height: `${h}px` }}
-            className={`w-[3px] rounded-full transition-[height,background-color] duration-100 ease-out ${
-              isLive ? tone.dot : 'bg-label-3'
-            }`}
-          />
-        );
-      })}
-    </div>
+      </VoiceOrb>
+    </button>
   );
 
   const statusText = (
@@ -232,10 +181,7 @@ export const InterpreterButton: FC<InterpreterButtonProps> = ({
     return (
       <div className="w-full flex items-center justify-center gap-6 pt-5 pb-4 select-none">
         {button}
-        <div className="flex flex-col gap-1 min-w-[220px] max-w-[340px]">
-          {statusText}
-          <div className="flex justify-start">{waveform}</div>
-        </div>
+        <div className="flex flex-col gap-1 min-w-[220px] max-w-[340px]">{statusText}</div>
         {muteToggle}
       </div>
     );
@@ -244,8 +190,7 @@ export const InterpreterButton: FC<InterpreterButtonProps> = ({
   return (
     <div className="flex flex-col items-center w-full select-none pt-5 pb-1">
       {button}
-      <div className="mt-2">{waveform}</div>
-      <div className="min-h-[40px] flex flex-col justify-center">{statusText}</div>
+      <div className="mt-4 min-h-[40px] flex flex-col justify-center">{statusText}</div>
       {muteToggle && <div className="mt-2">{muteToggle}</div>}
     </div>
   );

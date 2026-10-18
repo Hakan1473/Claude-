@@ -13,6 +13,7 @@ import {
   float32ToInt16,
   arrayBufferToBase64,
   downsampleTo16k,
+  getSharedOutputLevel,
 } from './audio/pcmHelper';
 import { extractMedicalDosages } from './languageCatalog';
 import { detectSpeakerByLanguage } from '../utils/speakerDetection';
@@ -376,6 +377,11 @@ export class InterpreterSession {
     const next = !this.isMuted;
     this.setMuted(next);
     return next;
+  }
+
+  /** Loudness of the interpreter's spoken output (live + fallback speech), 0–1. */
+  public getOutputLevel(): number {
+    return Math.max(this.audioPlayer.getOutputLevel(), getSharedOutputLevel());
   }
 
   public isMicMuted(): boolean {

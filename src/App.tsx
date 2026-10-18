@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Settings, SquarePen, ChevronDown, Plus, MessagesSquare, ClipboardList } from 'lucide-react';
 import type {
   LanguageOption,
@@ -403,6 +403,9 @@ export default function App() {
     };
   }, []);
 
+  // Polled by the voice orb every frame; reads the live player directly (no re-renders)
+  const getOutputLevel = useCallback(() => sessionRef.current?.getOutputLevel() ?? 0, []);
+
   const handleToggleMute = () => {
     if (sessionRef.current && sessionState !== 'idle') {
       const next = sessionRef.current.toggleMute();
@@ -694,6 +697,7 @@ export default function App() {
             audioLevel={audioLevel}
             isMuted={isMuted}
             onToggleMute={handleToggleMute}
+            getOutputLevel={getOutputLevel}
             compact={isWideScreen}
           />
         </section>
@@ -764,7 +768,6 @@ export default function App() {
                   targetLanguageName={targetLanguage.nameTr}
                   targetLanguageCode={targetLanguage.code}
                   onUpdateMessage={handleUpdateMessage}
-                  onGenerateSummary={() => handleGenerateSummary()}
                   dialogueMessagesCount={dialogueMessagesCount}
                   selectedVoice={selectedVoice}
                 />
@@ -792,7 +795,6 @@ export default function App() {
                     targetLanguageName={targetLanguage.nameTr}
                     targetLanguageCode={targetLanguage.code}
                     onUpdateMessage={handleUpdateMessage}
-                    onGenerateSummary={() => handleGenerateSummary()}
                     dialogueMessagesCount={dialogueMessagesCount}
                     selectedVoice={selectedVoice}
                   />

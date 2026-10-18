@@ -10,7 +10,6 @@ import {
   MessagesSquare,
   AudioLines,
   CornerDownRight,
-  Sparkles,
 } from 'lucide-react';
 import { detectMedicalTutorialVideo } from '../utils/medicalTutorialDetection';
 import { NurseCallVideoCard } from './NurseCallVideoCard';
@@ -34,8 +33,6 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
   targetLanguageName = 'Hasta Dili',
   targetLanguageCode = 'en',
   onUpdateMessage,
-  onGenerateSummary,
-  dialogueMessagesCount = 0,
   selectedVoice = 'Zephyr',
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -411,21 +408,6 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
               <span>Dinleniyor</span>
             </div>
             <p className="text-[17px] leading-[1.4] tracking-[-0.018em] shimmer-text">{interimText}</p>
-          </div>
-        )}
-
-        {/* AI conversation summary */}
-        {onGenerateSummary && dialogueMessagesCount > 0 && (
-          <div className="flex justify-center pt-1 pb-2">
-            <button
-              type="button"
-              onClick={() => onGenerateSummary()}
-              className="pressable btn-tinted h-9 pl-3 pr-4 rounded-full inline-flex items-center gap-1.5 text-[14px] font-medium cursor-pointer"
-              title="Yapay zeka ile konuşma özeti oluştur"
-            >
-              <Sparkles className="w-4 h-4" strokeWidth={2.25} />
-              <span>Konuşma Özeti Oluştur</span>
-            </button>
           </div>
         )}
 

@@ -66,6 +66,9 @@ export class RealtimeAudioPlayer {
   private audioCtx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
+  // Measures what is actually being played so the UI can visualise the interpreter's voice
+  private analyser: AnalyserNode | null = null;
+  private levelBuffer: Float32Array<ArrayBuffer> | null = null;
   private nextPlayTime: number = 0;
   private activeSources: AudioBufferSourceNode[] = [];
   private isInterrupted: boolean = false;
@@ -124,9 +127,14 @@ export class RealtimeAudioPlayer {
           this.masterGain = this.audioCtx.createGain();
           this.masterGain.gain.setValueAtTime(1.9, this.audioCtx.currentTime); // 1.9x volume boost
 
-          // Routing: Source -> Compressor -> Master Gain -> Audio Destination
+          // Routing: Source -> Compressor -> Master Gain -> Analyser -> Audio Destination
+          this.analyser = this.audioCtx.createAnalyser();
+          this.analyser.fftSize = 512;
+          this.analyser.smoothingTimeConstant = 0.6;
+          this.levelBuffer = new Float32Array(this.analyser.fftSize);
           this.compressor.connect(this.masterGain);
-          this.masterGain.connect(this.audioCtx.destination);
+          this.masterGain.connect(this.analyser);
+          this.analyser.connect(this.audioCtx.destination);
         } catch (chainErr) {
           console.warn('Audio compressor chain setup note:', chainErr);
         }
@@ -250,6 +258,15 @@ export class RealtimeAudioPlayer {
     });
   }
 
+  /** Current playback loudness, 0–1 (RMS of the last ~20 ms). */
+  public getOutputLevel(): number {
+    if (!this.analyser || !this.levelBuffer || this.activeSources.length === 0) return 0;
+    this.analyser.getFloatTimeDomainData(this.levelBuffer);
+    let sum = 0;
+    for (let i = 0; i < this.levelBuffer.length; i++) sum += this.levelBuffer[i] * this.levelBuffer[i];
+    return Math.min(1, Math.sqrt(sum / this.levelBuffer.length) * 3.2);
+  }
+
   // Immediately cancel all scheduled or currently playing audio
   public interrupt() {
     this.isInterrupted = true;
@@ -285,6 +302,8 @@ export class RealtimeAudioPlayer {
     this.audioCtx = null;
     this.compressor = null;
     this.masterGain = null;
+    this.analyser = null;
+    this.levelBuffer = null;
   }
 }
 
@@ -296,6 +315,11 @@ export function getSharedAudioPlayer(): RealtimeAudioPlayer {
     sharedGlobalAudioPlayer = new RealtimeAudioPlayer();
   }
   return sharedGlobalAudioPlayer;
+}
+
+/** Loudness of on-demand playback (replay / fallback speech), 0–1. */
+export function getSharedOutputLevel(): number {
+  return sharedGlobalAudioPlayer?.getOutputLevel() ?? 0;
 }
 
 /** Stops any on-demand playback started through playNormalizedAudioWav(). */

@@ -89,6 +89,22 @@ Active Session Languages:
 1. Foreign patient language: ${targetLang} (Country: ${targetCountry || 'General'}).
 2. Healthcare professional language: Turkish.
 
+CORE INTERPRETING PROTOCOL (HIGHEST PRIORITY — OVERRIDES EVERYTHING BELOW):
+1. You are a voice, not a participant. Output ONLY the faithful translation of what was just said. Never answer questions yourself, never give medical advice, never add, explain, summarize, soften or omit clinical content.
+2. Accuracy before speed. Preserve meaning exactly: negations ("not", "never", "-me/-ma"), quantities, times, body sides (left/right), durations, frequencies and certainty ("maybe", "definitely").
+3. Numbers, doses and units are sacred. Repeat every number, dose, unit, time and drug name exactly as spoken — never round, convert or guess. Say them slowly and distinctly (e.g. "beş yüz miligram", "five hundred milligrams").
+4. Clarity for the listener. Use short, simple, complete sentences. Speak to the patient in plain everyday language a non-medical adult understands; keep the clinical term when the staff used one, but never replace it with something vaguer.
+5. Keep the speaker's voice: translate in the first person exactly as spoken ("Ağrınız var mı?" -> "Do you have pain?"), never in third person ("The nurse asks...").
+6. If the audio is unclear, cut off, or you are not sure what was said, do NOT guess. Instead say only a brief request to repeat, in the speaker's own language (Turkish speaker: "Lütfen tekrar eder misiniz?"; patient: the same request in ${targetLang}).
+7. Ignore background noise, coughs, TV/radio, other conversations and your own previous output. Never translate your own speech back.
+8. One utterance in, one translation out. Do not chat, greet, confirm or comment between turns.
+
+VOICE DELIVERY:
+- Calm, warm, unhurried and clearly articulated, at a moderate pace — like an experienced bedside interpreter. Slightly slower and more deliberate for instructions, numbers and doses.
+- Gentle and reassuring when the patient is anxious or in pain; clear and confident when the staff gives instructions.
+- Natural idiomatic phrasing in the target language (not word-for-word), but never at the cost of exact clinical meaning.
+- No meta-filler ever: never say "Hasta diyor ki", "The patient says", "Translation:".
+
 ABSOLUTE CLINICAL ROLE LAWS:
 - The person speaking Turkish is ALWAYS the healthcare professional / nurse (Hemşire / Sağlık Personeli).
 - The person speaking ${targetLang} (or any non-Turkish foreign speech) is ALWAYS the international patient (Hasta).
@@ -127,14 +143,6 @@ HIGHEST PRIORITY: STRICT ORTHOGRAPHY, TYPO ELIMINATION & CLINICAL ANAMNESIS CAPT
   * Family history: (Ailede kronik hastalık, anne/baba/kardeşte diyabet, tansiyon, kalp krizi, kanser)
   * Chief complaints & current symptoms: (Ağrı, nefes darlığı, halsizlik, bulantı, baş dönmesi, vb.)
   * Patient requests & needs: (Su, yastık, battaniye, doktor görme, tuvalet yardımı)
-
-HIGHEST PRIORITY: HUMAN-LIKE VOCAL FLUENCY, EMOTIONAL WARMTH & NATIVE PROSODY:
-- When translating into Turkish or into the patient's language, speak exactly like an empathetic, highly cultured, native-speaking human medical interpreter:
-  * ZERO ROBOTIC MONOTONE: Use natural intonation, authentic pitch modulation, rhythmic pauses, and emotional depth appropriate to clinical bedside care.
-  * BED-SIDE COMPASSION & SINCERITY: If the patient is anxious, scared, or in pain, infuse your voice with genuine reassurance, warmth, and gentle calm. If the nurse is delivering important medical guidance, speak with clear, respectful, and authoritative clarity.
-  * NATIVE IDIOMATIC PHRASING: Do NOT perform rigid literal word-for-word translation. Speak with the idioms, conversational flow, and authentic cadence of a native speaker of that target language.
-  * ZERO STAMMERING, CHOPPINESS OR ROBOTIC GLITCHES: Ensure your sentences are fluid, whole, grammatical, and articulate from the first syllable to the last. Avoid disjointed fragments.
-  * ZERO META-FILLER: NEVER say "Hasta diyor ki...", "The patient says...", "Çeviriyorum:", "Translation:". Speak ONLY the pure direct translation.
 
 STRICT WORD SEPARATION & TYPOGRAPHIC SPACING RULES (CRITICAL):
 - Words must NEVER be concatenated or merged together without spaces (e.g. NEVER write "ağrınızvarmı", "hastayakınları", "500mgparol").
@@ -284,13 +292,18 @@ wss.on('connection', async (clientWs: WebSocket) => {
             },
           },
           systemInstruction,
+          // Low randomness: an interpreter must be faithful and consistent, not creative
+          temperature: 0.3,
+          // Keep long ward conversations alive instead of hitting the context limit and dropping the session
+          contextWindowCompression: { slidingWindow: {} },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           realtimeInputConfig: {
             automaticActivityDetection: {
               startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH' as any,
               endOfSpeechSensitivity: 'END_SENSITIVITY_LOW' as any,
-              silenceDurationMs: 650,
+              // A little more patience so patients who pause to breathe are not cut off mid-sentence
+              silenceDurationMs: 750,
             },
           },
         },
@@ -717,6 +730,9 @@ TRANSLATION & WORD SEPARATION LAWS (CRITICAL):
 - TURKISH COMPOUND PHRASES: Write separated: "kan basıncı", "nefes darlığı", "şeker hastalığı", "yüksek tansiyon", "açık kalp", "kalp krizi", "safra kesesi", "mide bulantısı", "baş dönmesi".
 - ORTHOGRAPHIC PERFECTION: Cleanly correct all speech slips, phonetic typos, stuttering, and missing Turkish characters (tansyon -> tansiyon, seker -> şeker, apandist -> apandisit, baypas -> bypass).
 - DO NOT add filler words (no "Çeviri:", no "Hasta:", no "Hemşire:").
+- FIDELITY: Translate exactly what was said, in the first person. Never answer the question, give advice, add, soften, summarize or omit anything.
+- PRESERVE PRECISELY: negations, numbers, doses, units, drug names, times, durations, frequencies and body sides (left/right).
+- CLARITY: Use short, plain, complete sentences the listener can easily understand; keep clinical terms the speaker used.
 - Output strictly valid JSON.
 
 Utterance:
@@ -749,6 +765,7 @@ CRITICAL MEDICAL EDUCATIONAL VIDEO DETECTION RULES:
           contents: promptContent,
           config: {
             responseMimeType: 'application/json',
+            temperature: 0.2,
           },
         });
         aiResponseText = response.text?.trim() || '';
@@ -787,6 +804,7 @@ CRITICAL MEDICAL EDUCATIONAL VIDEO DETECTION RULES:
           const res = await ai.models.generateContent({
             model: modelName,
             contents: fallbackPrompt,
+            config: { temperature: 0.2 },
           });
           translatedText = res.text?.trim() || '';
           if (translatedText) break;
@@ -1205,6 +1223,7 @@ Aşağıdaki JSON formatına birebir uygun çıktı ver (Markdown tırnağı koy
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
+            temperature: 0.2,
           },
         });
         aiResponseText = response.text?.trim() || '';
