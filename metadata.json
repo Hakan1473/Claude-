@@ -1,0 +1,10 @@
+{
+  "name": "Hastane Canlı Sesli Tercüman",
+  "description": "Hemşire ve sağlık personeli için yabancı dildeki hastalarla gerçek zamanlı, iki yönlü tıbbi sesli tercüman uygulaması.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
