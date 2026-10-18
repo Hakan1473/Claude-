@@ -1,4 +1,4 @@
-import { useState, type FC } from 'react';
+import { useState, useCallback, type FC, type ReactNode } from 'react';
 import {
   Pill,
   AlertTriangle,
@@ -12,7 +12,10 @@ import {
   Check,
   Activity,
   ClipboardList,
+  BookOpenText,
 } from 'lucide-react';
+import { TermPopover } from './TermPopover';
+import type { TermCategory } from '../services/termExplainer';
 import type { LiveAnamnesisState } from '../types/interpreter';
 
 interface LiveAnamnesisPanelProps {
@@ -25,6 +28,15 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
   targetLanguageName = 'Hasta Dili',
 }) => {
   const [copied, setCopied] = useState(false);
+  const [openTerm, setOpenTerm] = useState<{
+    key: string;
+    term: string;
+    category: TermCategory;
+    rect: DOMRect;
+    glyph: string;
+    icon: ReactNode;
+  } | null>(null);
+  const closeTerm = useCallback(() => setOpenTerm(null), []);
 
   // Compute total extracted clinical data points (excluding vitals as requested)
   const totalItems =
@@ -137,14 +149,16 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
     glyph: string;
     wide?: boolean;
     critical?: boolean;
+    /** Vademecum category: items become tappable and open an AI explanation */
+    explain?: TermCategory;
   }[] = [
-    { key: 'complaints', title: 'Aktif Şikayetler & Belirtiler', items: anamnesis.chiefComplaints, icon: Activity, glyph: 'bg-sys-pink', wide: true },
-    { key: 'allergies', title: 'Alerjiler', items: anamnesis.allergies, icon: AlertTriangle, glyph: 'bg-sys-red', critical: true },
-    { key: 'medications', title: 'Kullanılan İlaçlar', items: anamnesis.medications, icon: Pill, glyph: 'bg-sys-green' },
-    { key: 'chronic', title: 'Kronik Hastalıklar', items: anamnesis.chronicDiseases, icon: HeartPulse, glyph: 'bg-sys-purple' },
-    { key: 'surgeries', title: 'Geçirilmiş Operasyonlar', items: anamnesis.pastSurgeries, icon: Scissors, glyph: 'bg-sys-teal' },
-    { key: 'habits', title: 'Alışkanlıklar & Yaşam Tarzı', items: anamnesis.habits, icon: Cigarette, glyph: 'bg-sys-gray' },
-    { key: 'family', title: 'Aile Öyküsü', items: anamnesis.familyHistory, icon: Users, glyph: 'bg-sys-indigo' },
+    { key: 'complaints', title: 'Aktif Şikayetler & Belirtiler', items: anamnesis.chiefComplaints, icon: Activity, glyph: 'bg-sys-pink', wide: true, explain: 'complaint' },
+    { key: 'allergies', title: 'Alerjiler', items: anamnesis.allergies, icon: AlertTriangle, glyph: 'bg-sys-red', critical: true, explain: 'allergy' },
+    { key: 'medications', title: 'Kullanılan İlaçlar', items: anamnesis.medications, icon: Pill, glyph: 'bg-sys-green', explain: 'medication' },
+    { key: 'chronic', title: 'Kronik Hastalıklar', items: anamnesis.chronicDiseases, icon: HeartPulse, glyph: 'bg-sys-purple', explain: 'chronic' },
+    { key: 'surgeries', title: 'Geçirilmiş Operasyonlar', items: anamnesis.pastSurgeries, icon: Scissors, glyph: 'bg-sys-teal', explain: 'surgery' },
+    { key: 'habits', title: 'Alışkanlıklar & Yaşam Tarzı', items: anamnesis.habits, icon: Cigarette, glyph: 'bg-sys-gray', explain: 'habit' },
+    { key: 'family', title: 'Aile Öyküsü', items: anamnesis.familyHistory, icon: Users, glyph: 'bg-sys-indigo', explain: 'family' },
     { key: 'needs', title: 'Hastanın İstek & İhtiyaçları', items: anamnesis.patientNeedsAndRequests, icon: HandHeart, glyph: 'bg-sys-orange', wide: true },
     { key: 'instructions', title: 'Hemşirelik Notu & Talimatlar', items: anamnesis.clinicalInstructions, icon: Stethoscope, glyph: 'bg-accent', wide: true },
   ];
@@ -196,6 +210,26 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
         </div>
       )}
 
+      {/* Vademecum card for the tapped term */}
+      {openTerm && (
+        <TermPopover
+          key={openTerm.key + openTerm.term}
+          term={openTerm.term}
+          category={openTerm.category}
+          anchor={openTerm.rect}
+          glyphClass={openTerm.glyph}
+          icon={openTerm.icon}
+          onClose={closeTerm}
+        />
+      )}
+
+      {totalItems > 0 && (
+        <p className="px-1 -mt-1 text-[12px] text-label-3 inline-flex items-center gap-1.5">
+          <BookOpenText className="w-3.5 h-3.5" strokeWidth={2} />
+          İlaç, hastalık veya ameliyata dokunarak ne olduğunu görün
+        </p>
+      )}
+
       {/* Categories */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-2">
         {sections
@@ -223,17 +257,47 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
                   <span className="ml-auto text-[13px] text-label-2 tabular">{section.items.length}</span>
                 </header>
                 <ul className="pl-4">
-                  {section.items.map((item, idx) => (
-                    <li
-                      // biome-ignore lint/suspicious/noArrayIndexKey: items may repeat across sources
-                      key={`${section.key}-${idx}`}
-                      className={`pr-4 py-2.5 text-[15px] leading-snug tracking-[-0.012em] ${
-                        idx > 0 ? 'hairline-t' : ''
-                      } ${section.critical ? 'text-sys-red font-semibold' : 'text-label'}`}
-                    >
-                      {item}
-                    </li>
-                  ))}
+                  {section.items.map((item, idx) => {
+                    const itemKey = `${section.key}-${idx}`;
+                    const textClass = section.critical ? 'text-sys-red font-semibold' : 'text-label';
+                    return (
+                      <li
+                        // biome-ignore lint/suspicious/noArrayIndexKey: items may repeat across sources
+                        key={itemKey}
+                        className={idx > 0 ? 'hairline-t' : ''}
+                      >
+                        {section.explain ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              const category = section.explain as TermCategory;
+                              setOpenTerm({
+                                key: itemKey,
+                                term: item,
+                                category,
+                                rect: e.currentTarget.getBoundingClientRect(),
+                                glyph: section.glyph,
+                                icon: <Icon className="w-[18px] h-[18px]" strokeWidth={2.25} />,
+                              });
+                            }}
+                            aria-haspopup="dialog"
+                            aria-expanded={openTerm?.key === itemKey}
+                            title="Ne olduğunu gör"
+                            className={`term-chip group w-full -ml-4 pl-4 pr-3 py-2.5 flex items-center gap-2 text-left cursor-pointer text-[15px] leading-snug tracking-[-0.012em] ${textClass} ${
+                              openTerm?.key === itemKey ? 'bg-fill' : 'hover:bg-fill-2 active:bg-fill'
+                            }`}
+                          >
+                            <span className="flex-1 min-w-0">{item}</span>
+                            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-label-3 group-hover:text-accent transition-colors shrink-0">
+                              <BookOpenText className="w-4 h-4" strokeWidth={2} />
+                            </span>
+                          </button>
+                        ) : (
+                          <p className={`pr-4 py-2.5 text-[15px] leading-snug tracking-[-0.012em] ${textClass}`}>{item}</p>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             );

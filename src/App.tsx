@@ -97,7 +97,7 @@ export default function App() {
   const [permissionError, setPermissionError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Two-window sliding bottom panel state ('dialogue' = Canlı Konuşma, 'anamnesis' = Anlık Özet & Anamnez)
+  // Two-window sliding bottom panel state ('dialogue' = Canlı Konuşma, 'anamnesis' = Anamnez)
   const [activeBottomTab, setActiveBottomTab] = useState<'dialogue' | 'anamnesis'>('dialogue');
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
@@ -139,7 +139,7 @@ export default function App() {
     // Detect horizontal swipe: only trigger if horizontal swipe is clearly dominant
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
       if (deltaX < 0) {
-        // Swiped left -> Switch to Anlık Özet & Anamnez page
+        // Swiped left -> Switch to Anamnez page
         setActiveBottomTab('anamnesis');
       } else {
         // Swiped right -> Switch to Canlı Konuşma page
@@ -719,7 +719,7 @@ export default function App() {
                 <span className="glyph w-6 h-6 rounded-[7px] bg-sys-indigo">
                   <ClipboardList className="w-3.5 h-3.5" strokeWidth={2.25} />
                 </span>
-                <h2 className="text-[15px] font-semibold tracking-[-0.016em]">Anlık Özet & Anamnez</h2>
+                <h2 className="text-[15px] font-semibold tracking-[-0.016em]">Anamnez</h2>
                 {totalAnamnesisCount > 0 && (
                   <span className="text-[13px] text-label-2 tabular">{totalAnamnesisCount} veri</span>
                 )}
@@ -744,7 +744,7 @@ export default function App() {
                   },
                   {
                     id: 'anamnesis',
-                    label: 'Özet & Anamnez',
+                    label: 'Anamnez',
                     title: 'Anlık yapay zeka klinik anamnez ve özet',
                     badge:
                       totalAnamnesisCount > 0 ? (

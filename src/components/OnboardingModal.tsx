@@ -149,7 +149,7 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ isOpen, onClose }) =
       title: 'Anlık Anamnez & Klinik Özet',
       subtitle: 'Konuşulan tıbbi bilgiler anında kategorize edilir',
       description:
-        'Yapay zeka siz konuşurken görüşmeyi analiz eder. Hastanın şikayetleri, ilaçları, alerjileri, kronik hastalıkları, ameliyatları, alışkanlıkları ve talepleri anında "Özet & Anamnez" penceresine işlenir.',
+        'Yapay zeka siz konuşurken görüşmeyi analiz eder. Hastanın şikayetleri, ilaçları, alerjileri, kronik hastalıkları, ameliyatları, alışkanlıkları ve talepleri anında "Anamnez" penceresine işlenir.',
       bulletPoints: [
         'Konuşma bittikten sonra değil, konuşurken anlık olarak işlenir',
         'Gereksiz sorular veya olumsuzluklar ("alerjim yok" vb.) elenir',

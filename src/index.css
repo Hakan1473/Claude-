@@ -729,3 +729,109 @@ button {
     mix-blend-mode: screen;
   }
 }
+
+/* Splash — multilingual typographic strips */
+@layer components {
+  .splash-words {
+    gap: 2px;
+    font-size: clamp(26px, 6.2vw, 44px);
+    line-height: 1.12;
+    color: color-mix(in srgb, var(--label) 15%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+  }
+  .dark .splash-words {
+    color: color-mix(in srgb, var(--label) 20%, transparent);
+  }
+  .splash-word-serif {
+    font-family: "Instrument Serif", "Noto Serif", "Times New Roman", serif;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+  .splash-word-sans {
+    font-family: var(--font-sans);
+    font-weight: 300;
+    letter-spacing: -0.04em;
+  }
+  .splash-word-accent {
+    background: linear-gradient(90deg, #0a84ff, #5e5ce6 40%, #bf5af2 70%, #ff375f);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    opacity: 0.6;
+  }
+  .splash-clearing {
+    background: radial-gradient(ellipse 44% 36% at 50% 50%, var(--bg) 0%, var(--bg) 38%, transparent 100%);
+  }
+  @media (max-width: 640px) {
+    .splash-clearing {
+      background: radial-gradient(ellipse 85% 36% at 50% 52%, var(--bg) 0%, var(--bg) 52%, transparent 100%);
+    }
+  }
+}
+
+/* Vademecum popover (see TermPopover.tsx) */
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86) translateY(-4px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+@keyframes sheet-up-soft {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@layer components {
+  .term-popover {
+    background: var(--elevated);
+    backdrop-filter: saturate(180%) blur(30px);
+    -webkit-backdrop-filter: saturate(180%) blur(30px);
+    box-shadow: 0 0 0 0.5px var(--hairline), 0 24px 60px -12px rgba(0, 0, 0, 0.28), 0 8px 20px -8px rgba(0, 0, 0, 0.12);
+    animation: popover-in 0.42s var(--ease-spring) both;
+  }
+  .dark .term-popover {
+    background: #2c2c2e;
+    box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+  }
+  .term-popover-docked {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+    animation: sheet-up-soft 0.48s var(--ease-spring) both;
+  }
+  .term-content {
+    animation: content-in 0.35s var(--ease-apple) both;
+  }
+  .term-skeleton {
+    background: linear-gradient(90deg, var(--fill-2) 0%, var(--fill) 45%, var(--fill-2) 90%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  .term-chip {
+    transition: background-color 0.2s ease, transform 0.18s var(--ease-apple);
+  }
+  .term-chip:active {
+    transform: scale(0.98);
+  }
+}

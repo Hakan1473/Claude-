@@ -501,7 +501,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
           </div>
 
           <div>
-            {sectionHeader('Anlık özet ve anamnez')}
+            {sectionHeader('Anamnez')}
             <div className="group-list">
               {anamnesisFeatures.map(([title, body]) => (
                 <div key={title} className="flex items-start gap-3 px-4 py-3">

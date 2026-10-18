@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback, type FC } from 'react';
-import { POPULAR_LANGUAGES } from '../services/languageCatalog';
+import { MULTILINGUAL_WORDS } from '../data/multilingualWords';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -21,31 +21,39 @@ export const SplashScreen: FC<SplashScreenProps> = ({ onFinish }) => {
   }, []);
 
   useEffect(() => {
-    // Show the splash for ~1.8 s, then fade out smoothly (matches the 700 ms transition)
-    const timer = window.setTimeout(() => finish(700), 1800);
+    // Show the splash for ~2.6 s, then fade out smoothly (matches the 700 ms transition)
+    const timer = window.setTimeout(() => finish(700), 2600);
     return () => window.clearTimeout(timer);
   }, [finish]);
 
   const handleInstantSkip = () => finish(300);
 
-  // Native language names drifting softly in the background
-  const languageRows = useMemo(() => {
-    const list = POPULAR_LANGUAGES;
-    const rowCount = 7;
-    const chunkSize = Math.ceil(list.length / rowCount);
-    const rows = [];
-
-    for (let i = 0; i < rowCount; i++) {
-      const slice = list.slice(i * chunkSize, (i + 1) * chunkSize);
-      const rawItems = slice.length >= 6 ? slice : [...slice, ...list.slice(0, 6 - slice.length)];
-      rows.push({
-        rowId: `row-${i}`,
-        isReverse: i % 2 === 1,
-        duration: `${48 + (i % 3) * 10}s`,
-        items: rawItems.map((lang, itemIdx) => ({ ...lang, slotId: `row-${i}-item-${itemIdx}-${lang.code}` })),
-      });
+  // Dense typographic strips of care words in every script, gliding in alternating directions
+  const wordRows = useMemo(() => {
+    // Deterministic shuffle so the composition is stable between renders
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const words = [...MULTILINGUAL_WORDS];
+    for (let i = words.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [words[i], words[j]] = [words[j], words[i]];
     }
-    return rows;
+    const rowCount = 28;
+    const perRow = 14;
+    return Array.from({ length: rowCount }, (_, r) => ({
+      rowId: `row-${r}`,
+      isReverse: r % 2 === 1,
+      serif: r % 2 === 0,
+      duration: `${70 + ((r * 13) % 5) * 14}s`,
+      offset: `-${(r * 7) % 40}s`,
+      items: Array.from({ length: perRow }, (_, k) => {
+        const word = words[(r * perRow + k * 3) % words.length];
+        return { word, accent: (r + k) % 6 === 0, slotId: `r${r}-w${k}` };
+      }),
+    }));
   }, []);
 
   return (
@@ -57,37 +65,38 @@ export const SplashScreen: FC<SplashScreenProps> = ({ onFinish }) => {
         isFading ? 'opacity-0 scale-[1.02] pointer-events-none' : 'opacity-100 scale-100'
       }`}
     >
-      {/* Faint, drifting language names */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 pointer-events-none overflow-hidden flex flex-col justify-center gap-5 sm:gap-7 opacity-[0.07] dark:opacity-[0.1] [mask-image:radial-gradient(ellipse_75%_50%_at_center,transparent_55%,#000_100%)]"
-      >
-        {languageRows.map((row) => {
+      {/* Multilingual word strips */}
+      <div aria-hidden="true" className="splash-words absolute inset-0 pointer-events-none overflow-hidden flex flex-col justify-center">
+        {wordRows.map((row) => {
           const trackClass = row.isReverse ? 'track-scroll-right' : 'track-scroll-left';
-          const renderTrack = (prefix: string, hidden?: boolean) => (
+          const renderTrack = (prefix: string) => (
             <div
-              aria-hidden={hidden}
-              className={`flex shrink-0 items-center gap-8 pr-8 ${trackClass}`}
-              style={{ animationDuration: row.duration }}
+              className={`flex shrink-0 items-baseline gap-[0.55em] pr-[0.55em] ${trackClass}`}
+              style={{ animationDuration: row.duration, animationDelay: row.offset }}
             >
-              {row.items.map((lang) => (
+              {row.items.map((item) => (
                 <span
-                  key={`${prefix}-${lang.slotId}`}
-                  className="text-[34px] sm:text-[44px] font-semibold tracking-[-0.03em] text-label whitespace-nowrap"
+                  key={`${prefix}-${item.slotId}`}
+                  className={`whitespace-nowrap ${row.serif ? 'splash-word-serif' : 'splash-word-sans'} ${
+                    item.accent ? 'splash-word-accent' : ''
+                  }`}
                 >
-                  {lang.nameTr}
+                  {item.word}
                 </span>
               ))}
             </div>
           );
           return (
-            <div key={row.rowId} className="w-full overflow-hidden flex whitespace-nowrap">
+            <div key={row.rowId} className="splash-row w-full overflow-hidden flex whitespace-nowrap">
               {renderTrack('t1')}
-              {renderTrack('t2', true)}
+              {renderTrack('t2')}
             </div>
           );
         })}
       </div>
+
+      {/* Soft clearing so the logo and title stay perfectly legible */}
+      <div aria-hidden="true" className="splash-clearing absolute inset-0 pointer-events-none" />
 
       {/* Centerpiece */}
       <div className="relative z-10 flex flex-col items-center text-center px-8">
