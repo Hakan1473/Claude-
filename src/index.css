@@ -550,116 +550,53 @@ button {
   will-change: transform;
 }
 
-/* ==========================================================================
-   Silk flag — strip-based cloth wave (see CountryFlag.tsx)
-   ========================================================================== */
+/* 60+ FPS GPU-Accelerated Realistic 3D Silk Flag Wave Animation (original effect) */
+@keyframes flag-realistic-flutter {
+  0% {
+    transform: perspective(320px) rotateY(0deg) rotateZ(0deg) translateY(0px) skewY(0deg) scaleX(1);
+  }
+  18% {
+    transform: perspective(320px) rotateY(-8.5deg) rotateZ(1.2deg) translateY(-0.8px) skewY(1.7deg) scaleX(0.985);
+  }
+  38% {
+    transform: perspective(320px) rotateY(5deg) rotateZ(-0.8deg) translateY(0.6px) skewY(-1.2deg) scaleX(0.99);
+  }
+  58% {
+    transform: perspective(320px) rotateY(-6.5deg) rotateZ(0.9deg) translateY(-0.5px) skewY(1.4deg) scaleX(0.988);
+  }
+  78% {
+    transform: perspective(320px) rotateY(3deg) rotateZ(-0.5deg) translateY(0.4px) skewY(-0.8deg) scaleX(0.995);
+  }
+  100% {
+    transform: perspective(320px) rotateY(0deg) rotateZ(0deg) translateY(0px) skewY(0deg) scaleX(1);
+  }
+}
 
-.flag-static {
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-.dark .flag-static {
-  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.4);
-}
-
-.flag-wave {
-  isolation: isolate;
-  filter: drop-shadow(0 0 0.4px rgba(0, 0, 0, 0.35)) drop-shadow(0 1px 1.2px rgba(0, 0, 0, 0.14));
-}
-.dark .flag-wave {
-  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+@keyframes flag-fabric-wave {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
-.flag-slice {
-  position: relative;
-  display: block;
-  height: 100%;
-  flex-shrink: 0;
-  margin-right: -0.3px; /* overlap strips so no hairline gaps appear while waving */
-  background-repeat: no-repeat;
-  transform-origin: 50% 50%;
-  animation: flag-ripple var(--dur, 2.8s) cubic-bezier(0.45, 0, 0.55, 1) var(--d, 0s) infinite;
+.flag-animated-cloth {
+  transform-origin: 2% 50%;
+  animation: flag-realistic-flutter 2.8s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+  will-change: transform;
   backface-visibility: hidden;
-}
-.flag-slice-first {
-  border-radius: 2.5px 0 0 2.5px;
-}
-.flag-slice-last {
-  margin-right: 0;
-  border-radius: 0 2.5px 2.5px 0;
+  transform-style: preserve-3d;
 }
 
-/* Light catching the crest of each fold */
-.flag-slice::before,
-/* Shadow sinking into each trough */
-.flag-slice::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  animation: var(--dur, 2.8s) cubic-bezier(0.45, 0, 0.55, 1) var(--d, 0s) infinite;
-}
-.flag-slice::before {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2));
-  animation-name: flag-highlight;
-}
-.flag-slice::after {
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.32));
-  animation-name: flag-shadow;
+.flag-animated-cloth:hover {
+  animation-duration: 1.6s;
 }
 
-.flag-gloss {
-  position: absolute;
-  inset: 0;
-  border-radius: 3px;
-  pointer-events: none;
-  background: linear-gradient(
-    165deg,
-    rgba(255, 255, 255, 0.28) 0%,
-    rgba(255, 255, 255, 0) 38%,
-    rgba(0, 0, 0, 0) 62%,
-    rgba(0, 0, 0, 0.12) 100%
-  );
-  mix-blend-mode: soft-light;
-}
-
-@keyframes flag-ripple {
-  0%,
-  100% {
-    transform: translateY(0) skewY(0deg);
-  }
-  25% {
-    transform: translateY(calc(var(--amp) * -1)) skewY(calc(var(--tilt) * -1));
-  }
-  50% {
-    transform: translateY(0) skewY(0deg);
-  }
-  75% {
-    transform: translateY(var(--amp)) skewY(var(--tilt));
-  }
-}
-@keyframes flag-highlight {
-  0%,
-  45%,
-  100% {
-    opacity: 0;
-  }
-  20% {
-    opacity: 0.42;
-  }
-}
-@keyframes flag-shadow {
-  0%,
-  50%,
-  100% {
-    opacity: 0;
-  }
-  72% {
-    opacity: 0.6;
-  }
+.flag-animated-sheen {
+  animation: flag-fabric-wave 2.8s linear infinite;
+  will-change: background-position;
+  background-size: 200% 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

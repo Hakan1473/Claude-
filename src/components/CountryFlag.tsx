@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 
 interface CountryFlagProps {
   flag: string;
@@ -6,7 +6,6 @@ interface CountryFlagProps {
   country?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
-  /** Silk-cloth waving animation (on by default; honours prefers-reduced-motion). */
   animate?: boolean;
 }
 
@@ -68,23 +67,14 @@ const SPECIAL_CODE_MAP: Record<string, string> = {
   ku: 'iq', // Kurdish regional
 };
 
-// Flag dimensions in px (width × height, 3:2-ish like real flags)
-const DIMENSIONS: Record<NonNullable<CountryFlagProps['size']>, [number, number]> = {
-  xs: [21, 15],
-  sm: [26, 18],
-  md: [30, 22],
-  lg: [36, 26],
-  xl: [48, 32],
+// Enlarged flag size classes for superior legibility and prominence (Pixel-perfect across all browsers)
+const SIZE_CLASSES = {
+  xs: 'w-[22px] h-[16px]',
+  sm: 'w-[26px] h-[18px] text-xs',
+  md: 'w-[30px] h-[22px] text-sm',
+  lg: 'w-[36px] h-[26px] text-base',
+  xl: 'w-[48px] h-[32px] text-lg',
 };
-
-// Stable per-flag phase so neighbouring flags never wave in lockstep
-function phaseFor(key: string): number {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return (h % 1000) / 1000;
-}
-
-const WAVE_DURATION = 2.8; // seconds per wave cycle
 
 export const CountryFlag: React.FC<CountryFlagProps> = ({
   flag,
@@ -94,103 +84,82 @@ export const CountryFlag: React.FC<CountryFlagProps> = ({
   className = '',
   animate = true,
 }) => {
-  // 0 = FlagCDN raster, 1 = Twemoji SVG, 2 = emoji text fallback
-  const [sourceIndex, setSourceIndex] = useState(0);
+  const [imgFailed, setImgFailed] = useState(false);
+  const [usedFallback, setUsedFallback] = useState(false);
 
   // Reset the fallback chain whenever a different flag is shown in the same slot
   // (e.g. the header pill after a language change)
   useEffect(() => {
-    setSourceIndex(0);
+    setImgFailed(false);
+    setUsedFallback(false);
   }, [flag, code]);
 
+  // 1. Determine ISO 2-letter country code
   const derivedIso = flagEmojiToCountryCode(flag);
   const fallbackIso = code ? SPECIAL_CODE_MAP[code] || code.toLowerCase() : null;
   const iso = derivedIso || fallbackIso;
 
-  const flagcdnUrl = iso ? `https://flagcdn.com/w160/${iso}.png` : null;
+  // 2. Compute primary URL (FlagCDN vector/raster) and Twemoji URL
+  const flagcdnUrl = iso ? `https://flagcdn.com/w80/${iso}.png` : null;
   const twemojiUrl = flagEmojiToTwemojiUrl(flag);
-  const sources = [flagcdnUrl, twemojiUrl].filter(Boolean) as string[];
-  const currentSrc = sources[sourceIndex];
 
-  const [w, h] = DIMENSIONS[size];
-  const label = country || flag;
-
-  if (!currentSrc) {
+  // 3. Fallback when image fails completely
+  if (imgFailed || (!flagcdnUrl && !twemojiUrl)) {
     return (
       <span
         role="img"
-        className={`inline-flex items-center justify-center font-normal select-none leading-none ${className}`}
-        style={{ width: w, height: h, fontSize: h }}
-        title={label}
-        aria-label={label}
+        className={`inline-flex items-center justify-center font-normal select-none ${className}`}
+        title={country || flag}
+        aria-label={country || flag}
       >
         {flag}
       </span>
     );
   }
 
-  const handleError = () => setSourceIndex((i) => i + 1);
-
-  if (!animate) {
-    return (
-      <span
-        role="img"
-        className={`flag-static relative inline-block shrink-0 align-middle select-none ${className}`}
-        style={{ width: w, height: h }}
-        title={label}
-        aria-label={label}
-      >
-        <img
-          src={currentSrc}
-          alt=""
-          loading="lazy"
-          onError={handleError}
-          className="w-full h-full object-cover block pointer-events-none"
-        />
-      </span>
-    );
-  }
-
-  // Cloth simulation: the flag is cut into thin vertical strips that ripple with a
-  // phase delay, amplitude growing away from the hoist, each lit and shaded in sync.
-  const slices = Math.max(10, Math.round(w / 1.8));
-  const amplitude = Math.max(1, h * 0.085);
-  const basePhase = phaseFor(iso || flag) * WAVE_DURATION;
+  const currentSrc = usedFallback ? twemojiUrl : flagcdnUrl || twemojiUrl;
 
   return (
     <span
       role="img"
-      className={`flag-wave relative inline-flex shrink-0 align-middle select-none ${className}`}
-      style={{ width: w, height: h }}
-      title={label}
-      aria-label={label}
+      className={`inline-flex items-center relative select-none align-middle shrink-0 ${className}`}
+      style={{ perspective: '350px' }}
+      title={country || flag}
+      aria-label={country || flag}
     >
-      {/* Invisible probe drives the CDN → Twemoji → emoji fallback chain */}
-      <img src={currentSrc} alt="" hidden onError={handleError} />
-      {Array.from({ length: slices }, (_, i) => {
-        const t = i / (slices - 1); // 0 at the hoist, 1 at the fly end
-        const style = {
-          // +0.3px compensates the -0.3px overlap margin so the strips span the full flag width
-          width: `calc(${100 / slices}% + 0.3px)`,
-          backgroundImage: `url("${currentSrc}")`,
-          backgroundSize: `${slices * 100}% 100%`,
-          backgroundPosition: `${t * 100}% 0`,
-          '--amp': `${(0.15 + 0.85 * t) * amplitude}px`,
-          '--tilt': `${(0.2 + 0.8 * t) * 1.1}deg`,
-          '--d': `${-(basePhase + t * WAVE_DURATION * 0.85)}s`,
-          '--dur': `${WAVE_DURATION}s`,
-        } as CSSProperties;
-        return (
+      {/* Fluttering Wind Cloth (Pure Flag, No Pole, Ultra-Realistic 3D Wave) */}
+      <span
+        className={`relative inline-block overflow-hidden rounded-[3px] shadow-[0_2px_5px_rgba(0,0,0,0.18)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] border border-black/10 dark:border-white/15 ${
+          animate ? 'flag-animated-cloth' : ''
+        } ${SIZE_CLASSES[size]}`}
+      >
+        <img
+          src={currentSrc}
+          srcSet={!usedFallback && iso ? `https://flagcdn.com/w160/${iso}.png 2x` : undefined}
+          alt={country || flag}
+          loading="lazy"
+          onError={() => {
+            if (!usedFallback && flagcdnUrl) {
+              setUsedFallback(true);
+            } else {
+              setImgFailed(true);
+            }
+          }}
+          className="w-full h-full object-cover block select-none pointer-events-none"
+        />
+
+        {/* Dynamic 3D specular light & fold wave ripple across the silk fabric */}
+        {animate && (
           <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: fixed set of slices
-            key={i}
-            className={`flag-slice ${i === 0 ? 'flag-slice-first' : ''} ${i === slices - 1 ? 'flag-slice-last' : ''}`}
-            style={style}
+            className="flag-animated-sheen absolute inset-0 pointer-events-none mix-blend-overlay opacity-85"
+            style={{
+              background:
+                'linear-gradient(105deg, transparent 15%, rgba(255,255,255,0.45) 30%, rgba(0,0,0,0.22) 50%, rgba(255,255,255,0.4) 70%, rgba(0,0,0,0.2) 85%, transparent 100%)',
+              backgroundSize: '200% 100%',
+            }}
           />
-        );
-      })}
-      {/* Fixed silk sheen across the whole cloth */}
-      <span aria-hidden="true" className="flag-gloss" />
+        )}
+      </span>
     </span>
   );
 };
