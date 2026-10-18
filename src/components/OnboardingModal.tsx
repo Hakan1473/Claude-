@@ -315,12 +315,22 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ isOpen, onClose }) =
     },
   ];
 
+  // Always reopen the guide from the first step (e.g. when launched again from Settings)
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentStep(0);
+      setPlayingVideo(null);
+    }
+  }, [isOpen]);
+
   const current = steps[currentStep];
   const isLast = currentStep === steps.length - 1;
 
   const handleFinish = useCallback(() => {
     try {
       localStorage.setItem('has_seen_medical_onboarding', 'true');
+      // The key App.tsx checks on launch; without it the guide reopened on every visit
+      localStorage.setItem('interpreter_onboarding_completed', 'true');
     } catch (_e) {
       // ignore
     }

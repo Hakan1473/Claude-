@@ -10,10 +10,11 @@ import {
   MessagesSquare,
   AudioLines,
   CornerDownRight,
+  Sparkles,
 } from 'lucide-react';
 import { detectMedicalTutorialVideo } from '../utils/medicalTutorialDetection';
 import { NurseCallVideoCard } from './NurseCallVideoCard';
-import { playNormalizedAudioWav } from '../services/audio/pcmHelper';
+import { playNormalizedAudioWav, stopNormalizedAudio } from '../services/audio/pcmHelper';
 import { normalizeTranscriptText } from '../utils/medicalEntityExtractor';
 
 interface TranscriptViewProps {
@@ -33,12 +34,16 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
   targetLanguageName = 'Hasta Dili',
   targetLanguageCode = 'en',
   onUpdateMessage,
+  onGenerateSummary,
+  dialogueMessagesCount = 0,
   selectedVoice = 'Zephyr',
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [translatingMsgId, setTranslatingMsgId] = useState<string | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Incremented on every play/stop so a slow TTS response can't resurrect a cancelled playback
+  const playbackTokenRef = useRef(0);
 
   // Normalize messages text cleanly
   const preparedMessages = useMemo(() => {
@@ -73,6 +78,7 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
+      stopNormalizedAudio();
     };
   }, []);
 
@@ -130,19 +136,8 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
   };
 
   // Replay speech audio aloud on demand
-  const handleReplay = async (msg: TranscriptMessage, forceOriginal = false) => {
-    if (playingMsgId === msg.id) {
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-      setPlayingMsgId(null);
-      return;
-    }
-
+  const stopAllPlayback = () => {
+    playbackTokenRef.current += 1;
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
@@ -150,6 +145,18 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    stopNormalizedAudio();
+  };
+
+  const handleReplay = async (msg: TranscriptMessage, forceOriginal = false) => {
+    if (playingMsgId === msg.id) {
+      stopAllPlayback();
+      setPlayingMsgId(null);
+      return;
+    }
+
+    stopAllPlayback();
+    const token = playbackTokenRef.current;
 
     let textToSpeak = '';
     let langToSpeak = '';
@@ -183,15 +190,22 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        if (data.audioContent) {
-          await playNormalizedAudioWav(data.audioContent);
-          setPlayingMsgId(null);
+        // The TTS endpoint responds with { audio: <base64 WAV> }
+        if (token !== playbackTokenRef.current) return;
+        if (data.audio) {
+          // Let stopNormalizedAudio()'s short interruption window pass before playing
+          await new Promise((r) => setTimeout(r, 120));
+          if (token !== playbackTokenRef.current) return;
+          await playNormalizedAudioWav(data.audio);
+          if (token === playbackTokenRef.current) setPlayingMsgId(null);
           return;
         }
       }
     } catch {
       // Fallback below
     }
+
+    if (token !== playbackTokenRef.current) return;
 
     // Web Speech API Browser Fallback
     if ('speechSynthesis' in window) {
@@ -397,6 +411,21 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
               <span>Dinleniyor</span>
             </div>
             <p className="text-[17px] leading-[1.4] tracking-[-0.018em] shimmer-text">{interimText}</p>
+          </div>
+        )}
+
+        {/* AI conversation summary */}
+        {onGenerateSummary && dialogueMessagesCount > 0 && (
+          <div className="flex justify-center pt-1 pb-2">
+            <button
+              type="button"
+              onClick={() => onGenerateSummary()}
+              className="pressable btn-tinted h-9 pl-3 pr-4 rounded-full inline-flex items-center gap-1.5 text-[14px] font-medium cursor-pointer"
+              title="Yapay zeka ile konuşma özeti oluştur"
+            >
+              <Sparkles className="w-4 h-4" strokeWidth={2.25} />
+              <span>Konuşma Özeti Oluştur</span>
+            </button>
           </div>
         )}
 

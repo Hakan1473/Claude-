@@ -550,34 +550,116 @@ button {
   will-change: transform;
 }
 
-/* Legacy flag flutter (opt-in via <CountryFlag animate />) */
-@keyframes flag-realistic-flutter {
+/* ==========================================================================
+   Silk flag — strip-based cloth wave (see CountryFlag.tsx)
+   ========================================================================== */
+
+.flag-static {
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.dark .flag-static {
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.flag-wave {
+  isolation: isolate;
+  filter: drop-shadow(0 0 0.4px rgba(0, 0, 0, 0.35)) drop-shadow(0 1px 1.2px rgba(0, 0, 0, 0.14));
+}
+.dark .flag-wave {
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+
+.flag-slice {
+  position: relative;
+  display: block;
+  height: 100%;
+  flex-shrink: 0;
+  margin-right: -0.3px; /* overlap strips so no hairline gaps appear while waving */
+  background-repeat: no-repeat;
+  transform-origin: 50% 50%;
+  animation: flag-ripple var(--dur, 2.8s) cubic-bezier(0.45, 0, 0.55, 1) var(--d, 0s) infinite;
+  backface-visibility: hidden;
+}
+.flag-slice-first {
+  border-radius: 2.5px 0 0 2.5px;
+}
+.flag-slice-last {
+  margin-right: 0;
+  border-radius: 0 2.5px 2.5px 0;
+}
+
+/* Light catching the crest of each fold */
+.flag-slice::before,
+/* Shadow sinking into each trough */
+.flag-slice::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  animation: var(--dur, 2.8s) cubic-bezier(0.45, 0, 0.55, 1) var(--d, 0s) infinite;
+}
+.flag-slice::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2));
+  animation-name: flag-highlight;
+}
+.flag-slice::after {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.32));
+  animation-name: flag-shadow;
+}
+
+.flag-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  pointer-events: none;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0) 38%,
+    rgba(0, 0, 0, 0) 62%,
+    rgba(0, 0, 0, 0.12) 100%
+  );
+  mix-blend-mode: soft-light;
+}
+
+@keyframes flag-ripple {
   0%,
   100% {
-    transform: perspective(320px) rotateY(0deg) skewY(0deg);
+    transform: translateY(0) skewY(0deg);
   }
-  30% {
-    transform: perspective(320px) rotateY(-7deg) skewY(1.2deg);
+  25% {
+    transform: translateY(calc(var(--amp) * -1)) skewY(calc(var(--tilt) * -1));
   }
-  65% {
-    transform: perspective(320px) rotateY(5deg) skewY(-1deg);
+  50% {
+    transform: translateY(0) skewY(0deg);
+  }
+  75% {
+    transform: translateY(var(--amp)) skewY(var(--tilt));
   }
 }
-@keyframes flag-fabric-wave {
-  0% {
-    background-position: -200% 0;
-  }
+@keyframes flag-highlight {
+  0%,
+  45%,
   100% {
-    background-position: 200% 0;
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.42;
   }
 }
-.flag-animated-cloth {
-  transform-origin: 2% 50%;
-  animation: flag-realistic-flutter 2.8s ease-in-out infinite;
-}
-.flag-animated-sheen {
-  animation: flag-fabric-wave 2.8s linear infinite;
-  background-size: 200% 100%;
+@keyframes flag-shadow {
+  0%,
+  50%,
+  100% {
+    opacity: 0;
+  }
+  72% {
+    opacity: 0.6;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -608,5 +690,91 @@ button {
   }
   .dark .sheet .sheet-sticky {
     background: var(--surface);
+  }
+}
+
+/* ==========================================================================
+   Signature effects — ambient aurora & Apple Intelligence–style glow
+   ========================================================================== */
+
+@layer components {
+  /* Soft light fields behind the whole app */
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .ambient::before,
+  .ambient::after {
+    content: "";
+    position: absolute;
+    width: 70vmax;
+    height: 70vmax;
+    border-radius: 9999px;
+    filter: blur(80px);
+    opacity: 0.55;
+    animation: ambient-drift 38s ease-in-out infinite alternate;
+  }
+  .ambient::before {
+    top: -42vmax;
+    left: -18vmax;
+    background: radial-gradient(circle, rgba(0, 113, 227, 0.22), transparent 62%);
+  }
+  .ambient::after {
+    top: -40vmax;
+    right: -22vmax;
+    background: radial-gradient(circle, rgba(175, 82, 222, 0.16), transparent 62%);
+    animation-delay: -19s;
+  }
+  .dark .ambient::before {
+    background: radial-gradient(circle, rgba(10, 132, 255, 0.28), transparent 62%);
+    opacity: 0.7;
+  }
+  .dark .ambient::after {
+    background: radial-gradient(circle, rgba(191, 90, 242, 0.2), transparent 62%);
+    opacity: 0.7;
+  }
+
+  /* Multicolour rotating glow (live microphone, splash logo) */
+  .ai-glow {
+    position: absolute;
+    border-radius: 9999px;
+    background: conic-gradient(from 0deg, #0a84ff, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #30d158, #0a84ff);
+    filter: blur(18px);
+    animation: ai-spin 4s linear infinite;
+  }
+  .ai-ring {
+    position: absolute;
+    border-radius: 9999px;
+    padding: 3px;
+    background: conic-gradient(from 0deg, #0a84ff, #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #30d158, #0a84ff);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    animation: ai-spin 4s linear infinite;
+  }
+
+  /* Card top-edge light catch */
+  .card {
+    box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  .dark .card {
+    box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+}
+
+@keyframes ambient-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(6vmax, 4vmax, 0) scale(1.12);
+  }
+}
+@keyframes ai-spin {
+  to {
+    transform: rotate(1turn);
   }
 }

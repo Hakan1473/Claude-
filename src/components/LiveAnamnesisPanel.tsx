@@ -49,55 +49,73 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
 
     if (anamnesis.chiefComplaints.length > 0) {
       lines.push(`[BAŞVURU ŞİKAYETLERİ & BELİRTİLER]`);
-      anamnesis.chiefComplaints.forEach((c) => lines.push(`- ${c}`));
+      anamnesis.chiefComplaints.forEach((c) => {
+        lines.push(`- ${c}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.medications.length > 0) {
       lines.push(`[KULLANILAN İLAÇLAR]`);
-      anamnesis.medications.forEach((m) => lines.push(`- ${m}`));
+      anamnesis.medications.forEach((m) => {
+        lines.push(`- ${m}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.allergies.length > 0) {
       lines.push(`[ALERJİLER]`);
-      anamnesis.allergies.forEach((a) => lines.push(`- ${a}`));
+      anamnesis.allergies.forEach((a) => {
+        lines.push(`- ${a}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.chronicDiseases.length > 0) {
       lines.push(`[KRONİK HASTALIKLAR]`);
-      anamnesis.chronicDiseases.forEach((d) => lines.push(`- ${d}`));
+      anamnesis.chronicDiseases.forEach((d) => {
+        lines.push(`- ${d}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.pastSurgeries.length > 0) {
       lines.push(`[GEÇİRİLMİŞ OPERASYONLAR / CERRAHİ ÖYKÜ]`);
-      anamnesis.pastSurgeries.forEach((s) => lines.push(`- ${s}`));
+      anamnesis.pastSurgeries.forEach((s) => {
+        lines.push(`- ${s}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.habits.length > 0) {
       lines.push(`[ALIŞKANLIKLAR & YAŞAM TARZI]`);
-      anamnesis.habits.forEach((h) => lines.push(`- ${h}`));
+      anamnesis.habits.forEach((h) => {
+        lines.push(`- ${h}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.familyHistory.length > 0) {
       lines.push(`[AİLE ÖYKÜSÜ]`);
-      anamnesis.familyHistory.forEach((f) => lines.push(`- ${f}`));
+      anamnesis.familyHistory.forEach((f) => {
+        lines.push(`- ${f}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.patientNeedsAndRequests.length > 0) {
       lines.push(`[HASTANIN İSTEK VE TALEPLERİ]`);
-      anamnesis.patientNeedsAndRequests.forEach((r) => lines.push(`- ${r}`));
+      anamnesis.patientNeedsAndRequests.forEach((r) => {
+        lines.push(`- ${r}`);
+      });
       lines.push('');
     }
 
     if (anamnesis.clinicalInstructions.length > 0) {
       lines.push(`[HEMŞİRELİK TALİMATLARI]`);
-      anamnesis.clinicalInstructions.forEach((i) => lines.push(`- ${i}`));
+      anamnesis.clinicalInstructions.forEach((i) => {
+        lines.push(`- ${i}`);
+      });
       lines.push('');
     }
 

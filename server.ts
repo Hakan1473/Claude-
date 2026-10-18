@@ -192,7 +192,10 @@ wss.on('connection', async (clientWs: WebSocket) => {
   let currentTargetLang = 'English';
   let currentTargetCountry = 'General';
   let currentVoiceName = 'Zephyr';
-  let isIntentionalSwitch = false;
+  // Each Gemini Live connection gets an id; callbacks from superseded sessions are ignored
+  let connectionSeq = 0;
+  // A language/voice change that arrives while a connection is still being established
+  let reconnectQueued = false;
 
   const cleanup = () => {
     isClosing = true;
@@ -243,13 +246,17 @@ wss.on('connection', async (clientWs: WebSocket) => {
     isVoiceChangeOnly: boolean = false
   ) => {
     if (isClosing) return;
-    if (isConnecting) return; // Mutex: prevent duplicate connection attempts
+    if (isConnecting) {
+      // Mutex: never open two sessions at once, but remember to apply the newest settings afterwards
+      reconnectQueued = true;
+      return;
+    }
 
     isConnecting = true;
     isLiveReady = false;
+    const myConnectionId = ++connectionSeq;
 
     if (liveSession) {
-      isIntentionalSwitch = true;
       try {
         liveSession.close();
       } catch {
@@ -292,6 +299,7 @@ wss.on('connection', async (clientWs: WebSocket) => {
             startHeartbeat();
           },
           onmessage: (serverMsg: any) => {
+            if (myConnectionId !== connectionSeq) return;
             if (clientWs.readyState !== WebSocket.OPEN) return;
 
             // 1. Audio stream chunks: extract all inlineData across all parts
@@ -395,6 +403,7 @@ wss.on('connection', async (clientWs: WebSocket) => {
           },
           onerror: (err: any) => {
             console.error('[Live API Error]:', err?.message || err);
+            if (myConnectionId !== connectionSeq) return;
             isLiveReady = false;
             if (clientWs.readyState === WebSocket.OPEN && !isClosing) {
               clientWs.send(
@@ -406,16 +415,13 @@ wss.on('connection', async (clientWs: WebSocket) => {
             }
           },
           onclose: () => {
+            // A superseded session (closed on purpose for a voice/language switch) must not
+            // tear down the session that replaced it
+            if (myConnectionId !== connectionSeq) return;
             console.log('[Live WS] Gemini Live session closed, auto-reconnecting gracefully...');
             liveSession = null;
             isLiveReady = false;
             isConnecting = false;
-
-            // If closure was intentional (due to voice/language update), skip sending disruption signal
-            if (isIntentionalSwitch) {
-              isIntentionalSwitch = false;
-              return;
-            }
 
             if (clientWs.readyState === WebSocket.OPEN && !isClosing) {
               clientWs.send(JSON.stringify({ type: 'sessionReconnecting' }));
@@ -432,6 +438,7 @@ wss.on('connection', async (clientWs: WebSocket) => {
 
       // If client closed while establishing connection, discard immediately
       if (isClosing || clientWs.readyState !== WebSocket.OPEN) {
+        isConnecting = false;
         try {
           newSession.close();
         } catch {}
@@ -471,8 +478,14 @@ wss.on('connection', async (clientWs: WebSocket) => {
           })
         );
       }
+
+      if (reconnectQueued && !isClosing) {
+        reconnectQueued = false;
+        connectLiveSession(currentTargetLang, currentTargetCountry, currentVoiceName);
+      }
     } catch (err: any) {
       console.error('[Live Connect Failed]:', err?.message || err);
+      reconnectQueued = false;
       isConnecting = false;
       isLiveReady = false;
       liveSession = null;
@@ -1252,6 +1265,16 @@ function pcmToWav(pcmData: Buffer, sampleRate: number = 24000, numChannels: numb
   return Buffer.concat([header, pcmData]);
 }
 
+// Gemini TTS returns raw 16-bit PCM (audio/L16;rate=24000). Browsers can only decode it
+// once it is wrapped in a WAV container, so normalize every TTS payload to WAV.
+function ensureWavBase64(b64: string, mimeType?: string): string {
+  const buf = Buffer.from(b64, 'base64');
+  if (buf.length >= 4 && buf.toString('ascii', 0, 4) === 'RIFF') return b64;
+  const rateMatch = /rate=(\d+)/i.exec(mimeType || '');
+  const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
+  return pcmToWav(buf, sampleRate, 1).toString('base64');
+}
+
 // Live Speech Synthesizer: uses gemini-3.8-live & configured voice (Same as Canlı Tercüman)
 async function synthesizeWithGeminiLive(text: string, voiceName: string = 'Zephyr'): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -1376,7 +1399,8 @@ export async function synthesizeFastSpeech(
     );
 
     const res: any = await Promise.race([ttsPromise, timeoutPromise]);
-    const b64 = res?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const inline = res?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    const b64 = inline?.data ? ensureWavBase64(inline.data, inline.mimeType) : null;
     if (b64) {
       if (ttsAudioCache.size > 150) {
         const oldest = ttsAudioCache.keys().next().value;
@@ -1411,7 +1435,8 @@ export async function synthesizeFastSpeech(
     );
 
     const res: any = await Promise.race([fallbackPromise, timeoutPromise]);
-    const b64 = res?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const inline = res?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+    const b64 = inline?.data ? ensureWavBase64(inline.data, inline.mimeType) : null;
     if (b64) {
       ttsAudioCache.set(cacheKey, b64);
       return b64;

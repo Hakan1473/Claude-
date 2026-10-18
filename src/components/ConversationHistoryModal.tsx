@@ -16,6 +16,7 @@ import {
 import type { ConversationHistoryItem, TranscriptMessage } from '../types/interpreter';
 import { CountryFlag } from './CountryFlag';
 import { Sheet } from './ui/Sheet';
+import { toSearchKey } from '../utils/searchText';
 import { detectMedicalTutorialVideo } from '../utils/medicalTutorialDetection';
 
 interface ConversationHistoryModalProps {
@@ -54,22 +55,16 @@ export const ConversationHistoryModal: FC<ConversationHistoryModalProps> = ({
   };
 
   const filteredHistory = history.filter((item) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const langMatch =
-      item.targetLanguage.nameTr.toLowerCase().includes(q) ||
-      item.targetLanguage.name.toLowerCase().includes(q) ||
-      item.targetLanguage.country.toLowerCase().includes(q);
-    const textMatch = item.messages.some(
-      (m: TranscriptMessage) =>
-        m.originalText.toLowerCase().includes(q) ||
-        Boolean(m.translatedText?.toLowerCase().includes(q))
-    );
+    const q = toSearchKey(searchQuery.trim());
+    if (!q) return true;
+    const has = (text?: string) => toSearchKey(text).includes(q);
+    const langMatch = has(item.targetLanguage.nameTr) || has(item.targetLanguage.name) || has(item.targetLanguage.country);
+    const textMatch = item.messages.some((m: TranscriptMessage) => has(m.originalText) || has(m.translatedText));
     const summaryMatch =
       item.summary &&
-      (item.summary.briefSummaryTr.toLowerCase().includes(q) ||
-        item.summary.patientChiefComplaints.some((c: string) => c.toLowerCase().includes(q)) ||
-        item.summary.vitalSignsAndDosages.some((v: string) => v.toLowerCase().includes(q)));
+      (has(item.summary.briefSummaryTr) ||
+        item.summary.patientChiefComplaints.some((c: string) => has(c)) ||
+        item.summary.vitalSignsAndDosages.some((v: string) => has(v)));
     return langMatch || textMatch || summaryMatch;
   });
 

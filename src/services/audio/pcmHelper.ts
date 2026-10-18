@@ -279,9 +279,12 @@ export class RealtimeAudioPlayer {
   public close() {
     this.interrupt();
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      this.audioCtx.close();
-      this.audioCtx = null;
+      this.audioCtx.close().catch(() => {});
     }
+    // Nodes belong to the closed context; drop them so a later initContext() builds a fresh chain
+    this.audioCtx = null;
+    this.compressor = null;
+    this.masterGain = null;
   }
 }
 
@@ -293,6 +296,11 @@ export function getSharedAudioPlayer(): RealtimeAudioPlayer {
     sharedGlobalAudioPlayer = new RealtimeAudioPlayer();
   }
   return sharedGlobalAudioPlayer;
+}
+
+/** Stops any on-demand playback started through playNormalizedAudioWav(). */
+export function stopNormalizedAudio(): void {
+  sharedGlobalAudioPlayer?.interrupt();
 }
 
 export async function playNormalizedAudioWav(base64Wav: string): Promise<void> {

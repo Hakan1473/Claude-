@@ -475,6 +475,12 @@ export class InterpreterSession {
     })();
   }
 
+  /** Called when the visible conversation is replaced (new, restored or deleted conversation). */
+  public resetConversationContext() {
+    this.activeProvider?.resetTurnContext?.();
+    this.onInterimCb('');
+  }
+
   public interrupt() {
     this.audioPlayer.interrupt();
     if (this.activeProvider) {

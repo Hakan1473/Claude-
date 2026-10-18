@@ -22,4 +22,5 @@ export interface VoiceTranslationProvider {
   setTargetLanguage(language: LanguageOption): void;
   setVoice?(voiceName: string): void;
   interrupt(): void;
+  resetTurnContext?(): void;
 }

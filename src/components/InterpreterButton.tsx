@@ -16,14 +16,14 @@ interface InterpreterButtonProps {
 type Tone = 'idle' | 'muted' | 'connecting' | 'listening' | 'interpreting' | 'speaking' | 'error';
 
 // Text color, solid background and soft glow per state tone
-const TONE: Record<Tone, { text: string; dot: string; glow: string }> = {
-  idle: { text: 'text-label-2', dot: 'bg-sys-green', glow: 'bg-accent' },
-  muted: { text: 'text-sys-red', dot: 'bg-sys-red', glow: 'bg-sys-red' },
-  connecting: { text: 'text-sys-orange', dot: 'bg-sys-orange', glow: 'bg-sys-orange' },
-  listening: { text: 'text-sys-green', dot: 'bg-sys-green', glow: 'bg-sys-green' },
-  interpreting: { text: 'text-sys-orange', dot: 'bg-sys-orange', glow: 'bg-sys-orange' },
-  speaking: { text: 'text-accent', dot: 'bg-accent', glow: 'bg-accent' },
-  error: { text: 'text-sys-red', dot: 'bg-sys-red', glow: 'bg-sys-red' },
+const TONE: Record<Tone, { text: string; dot: string; glow: string; ring: string }> = {
+  idle: { text: 'text-label-2', dot: 'bg-sys-green', glow: 'bg-accent', ring: 'border-accent/50' },
+  muted: { text: 'text-sys-red', dot: 'bg-sys-red', glow: 'bg-sys-red', ring: 'border-sys-red/50' },
+  connecting: { text: 'text-sys-orange', dot: 'bg-sys-orange', glow: 'bg-sys-orange', ring: 'border-sys-orange/50' },
+  listening: { text: 'text-sys-green', dot: 'bg-sys-green', glow: 'bg-sys-green', ring: 'border-sys-green/50' },
+  interpreting: { text: 'text-sys-orange', dot: 'bg-sys-orange', glow: 'bg-sys-orange', ring: 'border-sys-orange/50' },
+  speaking: { text: 'text-accent', dot: 'bg-accent', glow: 'bg-accent', ring: 'border-accent/50' },
+  error: { text: 'text-sys-red', dot: 'bg-sys-red', glow: 'bg-sys-red', ring: 'border-sys-red/50' },
 };
 
 // Symmetrical waveform (Apple Voice Memos style)
@@ -107,22 +107,32 @@ export const InterpreterButton: FC<InterpreterButtonProps> = ({
 
   const button = (
     <div className="relative flex items-center justify-center shrink-0">
-      {/* Ambient glow that follows the voice level */}
-      {isActive && (
-        <span
-          aria-hidden="true"
-          style={{ transform: `scale(${1.05 + normLevel * 0.35})`, opacity: 0.18 + normLevel * 0.3 }}
-          className={`absolute inset-0 rounded-full blur-2xl transition-transform duration-100 ease-out ${tone.glow}`}
-        />
-      )}
-
-      {/* Calm ripples while the line is open */}
+      {/* Apple Intelligence–style glow: breathes with the voice level while the line is live */}
       {isLive && (
         <>
-          <span aria-hidden="true" className={`absolute inset-0 rounded-full anim-ripple ${tone.glow}`} />
           <span
             aria-hidden="true"
-            className={`absolute inset-0 rounded-full anim-ripple ${tone.glow}`}
+            style={{ transform: `scale(${1 + normLevel * 0.28})`, opacity: 0.45 + normLevel * 0.45 }}
+            className="absolute -inset-3 transition-[transform,opacity] duration-150 ease-out"
+          >
+            <span className="ai-glow inset-0" />
+          </span>
+          <span aria-hidden="true" className="ai-ring -inset-[3px] opacity-90" />
+        </>
+      )}
+
+      {/* Muted / connecting: calm single-tone glow */}
+      {isActive && !isLive && (
+        <span aria-hidden="true" className={`absolute inset-0 rounded-full blur-2xl opacity-30 ${tone.glow}`} />
+      )}
+
+      {/* Calm ripple rings while the line is open */}
+      {isLive && (
+        <>
+          <span aria-hidden="true" className={`absolute inset-0 rounded-full border-2 anim-ripple ${tone.ring}`} />
+          <span
+            aria-hidden="true"
+            className={`absolute inset-0 rounded-full border-2 anim-ripple ${tone.ring}`}
             style={{ animationDelay: '1s' }}
           />
         </>

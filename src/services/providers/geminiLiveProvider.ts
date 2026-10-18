@@ -124,16 +124,21 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
         }
       };
 
+      // Close any previous socket first: closeExistingWs() also clears connectTimeoutId,
+      // so the watchdog below must be armed afterwards or it would be cancelled immediately
+      this.closeExistingWs();
+
       // 7-second handshake watchdog ensures UI never gets stuck
       this.connectTimeoutId = setTimeout(() => {
         if (!this.isLiveReady) {
+          if (this.isSessionActive) {
+            this.scheduleReconnect();
+          }
           safeReject(new Error('Tercüme bağlantısı zaman aşımına uğradı'));
         } else {
           safeResolve();
         }
       }, 7000);
-
-      this.closeExistingWs();
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/live`;
@@ -652,6 +657,17 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
         })
       );
     }
+  }
+
+  /** Forget the open turn so a new or restored conversation never receives late updates from the old one. */
+  public resetTurnContext(): void {
+    if (this.translationFallbackTimer) {
+      clearTimeout(this.translationFallbackTimer);
+      this.translationFallbackTimer = null;
+    }
+    this.lastInputText = '';
+    this.accumulatedOutputText = '';
+    this.lastInputMessage = null;
   }
 
   public interrupt(): void {

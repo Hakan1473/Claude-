@@ -4,6 +4,7 @@ import { POPULAR_LANGUAGES } from '../services/languageCatalog';
 import type { LanguageOption } from '../types/interpreter';
 import { CountryFlag } from './CountryFlag';
 import { Sheet } from './ui/Sheet';
+import { toSearchKey } from '../utils/searchText';
 
 interface LanguageSelectorModalProps {
   isOpen: boolean;
@@ -60,11 +61,12 @@ export const LanguageSelectorModal: FC<LanguageSelectorModalProps> = ({
 
   if (!isOpen) return null;
 
+  const query = toSearchKey(search.trim());
   const filtered = POPULAR_LANGUAGES.filter(
     (lang) =>
-      lang.name.toLowerCase().includes(search.toLowerCase()) ||
-      lang.nameTr.toLowerCase().includes(search.toLowerCase()) ||
-      lang.country.toLowerCase().includes(search.toLowerCase())
+      toSearchKey(lang.name).includes(query) ||
+      toSearchKey(lang.nameTr).includes(query) ||
+      toSearchKey(lang.country).includes(query)
   );
 
   const handleDismissKeyboard = () => {

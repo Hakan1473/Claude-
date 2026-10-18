@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, type FC } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, type FC } from 'react';
 import { POPULAR_LANGUAGES } from '../services/languageCatalog';
 
 interface SplashScreenProps {
@@ -7,26 +7,26 @@ interface SplashScreenProps {
 
 export const SplashScreen: FC<SplashScreenProps> = ({ onFinish }) => {
   const [isFading, setIsFading] = useState(false);
+  // Keep the latest callback in a ref: App passes a new arrow function on every render,
+  // which previously restarted the timers and could keep the splash on screen.
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
+  const finishedRef = useRef(false);
+
+  const finish = useCallback((delay: number) => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    setIsFading(true);
+    window.setTimeout(() => onFinishRef.current(), delay);
+  }, []);
 
   useEffect(() => {
-    // Show splash screen for ~1.8 seconds, then trigger a smooth fade-out
-    const timer = setTimeout(() => {
-      setIsFading(true);
-      const closeTimer = setTimeout(() => {
-        onFinish();
-      }, 700); // matches transition duration
-      return () => clearTimeout(closeTimer);
-    }, 1800);
+    // Show the splash for ~1.8 s, then fade out smoothly (matches the 700 ms transition)
+    const timer = window.setTimeout(() => finish(700), 1800);
+    return () => window.clearTimeout(timer);
+  }, [finish]);
 
-    return () => clearTimeout(timer);
-  }, [onFinish]);
-
-  const handleInstantSkip = () => {
-    setIsFading(true);
-    setTimeout(() => {
-      onFinish();
-    }, 300);
-  };
+  const handleInstantSkip = () => finish(300);
 
   // Native language names drifting softly in the background
   const languageRows = useMemo(() => {
@@ -91,11 +91,14 @@ export const SplashScreen: FC<SplashScreenProps> = ({ onFinish }) => {
 
       {/* Centerpiece */}
       <div className="relative z-10 flex flex-col items-center text-center px-8">
-        <img
-          src="/logo.png"
-          alt="Canlı Sesli Tercüman"
-          className="anim-splash-logo w-[104px] h-[104px] sm:w-[120px] sm:h-[120px] rounded-[26px] sm:rounded-[28px] bg-white object-contain shadow-[0_0_0_0.5px_var(--hairline),0_20px_50px_-12px_rgba(0,113,227,0.35)]"
-        />
+        <div className="relative anim-splash-logo">
+          <span aria-hidden="true" className="ai-glow -inset-3 opacity-60 dark:opacity-80" />
+          <img
+            src="/logo.png"
+            alt="Canlı Sesli Tercüman"
+            className="relative w-[104px] h-[104px] sm:w-[120px] sm:h-[120px] rounded-[26px] sm:rounded-[28px] bg-white object-contain shadow-[0_0_0_0.5px_var(--hairline),0_20px_50px_-12px_rgba(0,0,0,0.25)]"
+          />
+        </div>
 
         <h1
           className="anim-rise mt-7 text-[28px] sm:text-[34px] font-semibold tracking-[-0.03em] text-label leading-tight"

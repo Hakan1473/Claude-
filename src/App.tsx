@@ -168,6 +168,8 @@ export default function App() {
       return;
     }
 
+    // Abort stale requests so an older (or previous conversation's) answer never overwrites a newer one
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const res = await fetch('/api/live-anamnesis', {
@@ -177,17 +179,21 @@ export default function App() {
             messages: dialogueMsgs,
             targetLanguage: targetLanguage.nameTr,
           }),
+          signal: controller.signal,
         });
         if (res.ok) {
           const data = await res.json();
-          setAiAnamnesis(data);
+          if (!controller.signal.aborted) setAiAnamnesis(data);
         }
       } catch (err) {
-        console.debug('AI Anamnesis sync note:', err);
+        if (!controller.signal.aborted) console.debug('AI Anamnesis sync note:', err);
       }
     }, 1200);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [messages, targetLanguage]);
 
   // Combined clinical state: prefers verified AI extraction when ready, otherwise fast local extractor
@@ -225,7 +231,10 @@ export default function App() {
     const supervisor = new TranslationSupervisor(
       {
         onUpdateMessage: (healed) => {
-          setMessages((prev) => prev.map((m) => (m.id === healed.id ? healed : m)));
+          // Merge so the original timestamp, language and extracted entities survive the heal
+          setMessages((prev) =>
+            prev.map((m) => (m.id === healed.id ? { ...m, ...healed, timestamp: m.timestamp } : m))
+          );
         },
       },
       targetLanguage,
@@ -317,7 +326,7 @@ export default function App() {
 
   // Update specific transcript message (e.g. from on-demand translate button)
   const handleUpdateMessage = (updated: TranscriptMessage) => {
-    setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
   };
 
   // Initialize network monitor and session listeners
@@ -506,6 +515,7 @@ export default function App() {
       setConversationHistory(getConversationHistory());
     }
     currentConversationIdRef.current = null;
+    sessionRef.current?.resetConversationContext();
     setMessages([]);
     setInterimText('');
     setSummary(null);
@@ -517,7 +527,13 @@ export default function App() {
   const handleRestoreConversation = (item: ConversationHistoryItem) => {
     currentConversationIdRef.current = item.id;
     deletedConversationIdsRef.current.delete(item.id);
+    sessionRef.current?.resetConversationContext();
     setTargetLanguage(item.targetLanguage);
+    // Keep a running live session in sync with the restored conversation's language
+    if (sessionRef.current && sessionState !== 'idle' && item.targetLanguage.code !== targetLanguage.code) {
+      sessionRef.current.setTargetLanguage(item.targetLanguage);
+    }
+    setAiAnamnesis(null);
     setMessages(item.messages);
     setSummary(item.summary || null);
     setInterimText('');
@@ -530,6 +546,7 @@ export default function App() {
     setConversationHistory(getConversationHistory());
     if (currentConversationIdRef.current === id) {
       currentConversationIdRef.current = null;
+      sessionRef.current?.resetConversationContext();
       setMessages([]);
       setSummary(null);
       setInterimText('');
@@ -541,6 +558,7 @@ export default function App() {
     clearAllConversationHistory();
     setConversationHistory([]);
     currentConversationIdRef.current = null;
+    sessionRef.current?.resetConversationContext();
     setMessages([]);
     setSummary(null);
     setInterimText('');
@@ -552,6 +570,9 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-bg text-label overflow-hidden font-sans antialiased">
+      {/* Ambient light field */}
+      <div aria-hidden="true" className="ambient" />
+
       {/* App Launch Splash Screen */}
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
 
@@ -561,7 +582,7 @@ export default function App() {
       {errorMessage && <ErrorNotice message={errorMessage} onDismiss={() => setErrorMessage(null)} />}
 
       {/* Translucent navigation bar */}
-      <header className="pt-safe material hairline-b shrink-0 select-none z-20">
+      <header className="relative pt-safe material hairline-b shrink-0 select-none z-20">
         <div className="h-[52px] sm:h-14 flex items-center justify-between gap-3 w-full max-w-[1600px] mx-auto px-4 sm:px-6">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="relative shrink-0">
@@ -630,7 +651,7 @@ export default function App() {
       </header>
 
       {/* Quick language rail */}
-      <div className="shrink-0 select-none w-full max-w-[1600px] mx-auto">
+      <div className="relative z-10 shrink-0 select-none w-full max-w-[1600px] mx-auto">
         <div className="fade-x flex items-center gap-2 overflow-x-auto no-scrollbar px-4 sm:px-6 pt-3 pb-1">
           {frequentLanguages.map((lang) => {
             const isSelected = targetLanguage.code === lang.code;
@@ -663,7 +684,7 @@ export default function App() {
       </div>
 
       {/* Main view */}
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden w-full max-w-[1600px] mx-auto px-3 sm:px-6">
+      <main className="relative z-10 flex-1 flex flex-col min-h-0 overflow-hidden w-full max-w-[1600px] mx-auto px-3 sm:px-6">
         {/* Centerpiece: microphone control */}
         <section className="shrink-0 flex flex-col items-center w-full">
           <InterpreterButton
@@ -743,7 +764,7 @@ export default function App() {
                   targetLanguageName={targetLanguage.nameTr}
                   targetLanguageCode={targetLanguage.code}
                   onUpdateMessage={handleUpdateMessage}
-                  onGenerateSummary={handleGenerateSummary}
+                  onGenerateSummary={() => handleGenerateSummary()}
                   dialogueMessagesCount={dialogueMessagesCount}
                   selectedVoice={selectedVoice}
                 />
@@ -771,7 +792,7 @@ export default function App() {
                     targetLanguageName={targetLanguage.nameTr}
                     targetLanguageCode={targetLanguage.code}
                     onUpdateMessage={handleUpdateMessage}
-                    onGenerateSummary={handleGenerateSummary}
+                    onGenerateSummary={() => handleGenerateSummary()}
                     dialogueMessagesCount={dialogueMessagesCount}
                     selectedVoice={selectedVoice}
                   />
@@ -786,7 +807,7 @@ export default function App() {
       </main>
 
       {/* Signature footer */}
-      <footer className="pb-safe shrink-0 select-none">
+      <footer className="relative z-10 pb-safe shrink-0 select-none">
         <p className="px-4 pb-2 text-center text-[11px] text-label-3 tracking-[-0.003em]">
           <span className="font-semibold text-sys-orange">Demo</span>
           <span className="hidden sm:inline"> · Klinik değerlendirme modu</span>
@@ -830,7 +851,7 @@ export default function App() {
         onClose={() => setIsSummaryModalOpen(false)}
         summary={summary}
         isLoading={isGeneratingSummary}
-        onRegenerate={handleGenerateSummary}
+        onRegenerate={() => handleGenerateSummary()}
         targetLanguageName={targetLanguage.nameTr}
       />
     </div>
