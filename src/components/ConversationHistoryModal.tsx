@@ -3,9 +3,8 @@ import {
   X,
   Clock,
   Trash2,
-  ExternalLink,
+  ArrowUpRight,
   ChevronLeft,
-  Calendar,
   Sparkles,
   Copy,
   Check,
@@ -16,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { ConversationHistoryItem, TranscriptMessage } from '../types/interpreter';
 import { CountryFlag } from './CountryFlag';
+import { Sheet } from './ui/Sheet';
 import { detectMedicalTutorialVideo } from '../utils/medicalTutorialDetection';
 
 interface ConversationHistoryModalProps {
@@ -107,450 +107,377 @@ export const ConversationHistoryModal: FC<ConversationHistoryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col h-[90vh] max-h-[820px]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 shrink-0">
-          <div className="flex items-center gap-2.5">
-            {selectedItem ? (
+    <Sheet
+      onClose={onClose}
+      widthClass="sm:max-w-2xl"
+      fixedHeight
+      bodyClassName="px-4 sm:px-6 pb-6"
+      leading={
+        selectedItem ? (
+          <button
+            type="button"
+            onClick={() => setSelectedItem(null)}
+            aria-label="Listeye Dön"
+            className="pressable -ml-1 w-[30px] h-[30px] rounded-full bg-fill text-accent flex items-center justify-center shrink-0 cursor-pointer"
+          >
+            <ChevronLeft className="w-5 h-5" strokeWidth={2.5} />
+          </button>
+        ) : undefined
+      }
+      title={selectedItem ? `${selectedItem.targetLanguage.nameTr} Görüşmesi` : 'Geçmiş Sohbetler'}
+      subtitle={
+        selectedItem ? (
+          <span className="tabular">
+            {formatDate(selectedItem.createdAt)} · {selectedItem.messages.length} mesaj
+          </span>
+        ) : (
+          `${history.length} görüşme · Önceki tercümeler ve özetler`
+        )
+      }
+      trailing={
+        selectedItem ? (
+          <button
+            type="button"
+            onClick={() => handleCopyTranscript(selectedItem)}
+            className={`pressable h-[30px] px-3 rounded-full inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer ${
+              copied ? 'bg-sys-green/15 text-sys-green' : 'btn-tinted'
+            }`}
+            title="Görüşmeyi Kopyala"
+          >
+            {copied ? <Check className="w-3.5 h-3.5" strokeWidth={2.5} /> : <Copy className="w-3.5 h-3.5" strokeWidth={2} />}
+            <span className="hidden sm:inline">{copied ? 'Kopyalandı' : 'Kopyala'}</span>
+          </button>
+        ) : undefined
+      }
+      footer={
+        !selectedItem && history.length > 0 ? (
+          confirmClearAll ? (
+            <div className="w-full flex items-center justify-end gap-2 anim-fade">
+              <span className="flex-1 text-[13px] text-sys-red font-medium">Tümü kalıcı olarak silinsin mi?</span>
               <button
                 type="button"
-                onClick={() => setSelectedItem(null)}
-                className="p-1.5 -ml-1 rounded-xl bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold"
+                onClick={() => setConfirmClearAll(false)}
+                className="pressable btn-gray h-8 px-3.5 rounded-full text-[13px] font-medium cursor-pointer"
               >
-                <ChevronLeft className="w-5 h-5" />
-                <span className="hidden sm:inline">Listeye Dön</span>
+                Vazgeç
               </button>
-            ) : (
-              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                <Clock className="w-4 h-4" />
-              </div>
-            )}
-
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                <span>{selectedItem ? 'Görüşme Detayı' : 'Geçmiş Sohbetler'}</span>
-                {!selectedItem && (
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                    {history.length} Görüşme
-                  </span>
-                )}
-              </h2>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                {selectedItem ? (
-                  <>
-                    <CountryFlag flag={selectedItem.targetLanguage.flag} code={selectedItem.targetLanguage.code} country={selectedItem.targetLanguage.country} size="xs" />
-                    <span>{selectedItem.targetLanguage.nameTr} • {formatDate(selectedItem.createdAt)}</span>
-                  </>
-                ) : (
-                  <span>Önceki tüm tercümeler ve konuşma özetleri</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onClearAllHistory();
+                  setConfirmClearAll(false);
+                }}
+                className="pressable h-8 px-3.5 rounded-full text-[13px] font-semibold bg-sys-red text-white cursor-pointer"
+              >
+                Hepsini Sil
+              </button>
+            </div>
+          ) : (
+            <div className="w-full flex items-center justify-between gap-2">
+              <span className="text-[13px] text-label-2 tabular">Toplam {history.length} kayıt</span>
+              <button
+                type="button"
+                onClick={() => setConfirmClearAll(true)}
+                className="pressable h-8 px-3 rounded-full text-[13px] font-medium text-sys-red hover:bg-sys-red/10 inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+                <span>Tümünü Temizle</span>
+              </button>
+            </div>
+          )
+        ) : undefined
+      }
+    >
+      {!selectedItem ? (
+        /* LIST VIEW */
+        <div className="anim-fade">
+          {history.length > 0 && (
+            <div className="sheet-sticky sticky top-0 z-10 pb-3">
+              <div className="relative">
+                <Search
+                  className="w-4 h-4 text-label-2 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  strokeWidth={2.25}
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Metin, şikayet, ilaç veya dil ara"
+                  className="field w-full h-10 pl-9 pr-9 text-[16px] sm:text-[15px]"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Aramayı temizle"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-label-3 text-bg flex items-center justify-center cursor-pointer"
+                  >
+                    <X className="w-3 h-3" strokeWidth={3} />
+                  </button>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="flex items-center gap-1.5">
-            {selectedItem && (
-              <button
-                type="button"
-                onClick={() => handleCopyTranscript(selectedItem)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
-                title="Görüşmeyi Kopyala"
-              >
-                {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                <span className="hidden sm:inline">{copied ? 'Kopyalandı' : 'Kopyala'}</span>
-              </button>
-            )}
+          {history.length === 0 ? (
+            <div className="py-16 flex flex-col items-center justify-center text-center px-6">
+              <div className="w-14 h-14 rounded-full bg-sys-indigo/12 text-sys-indigo flex items-center justify-center mb-4">
+                <Clock className="w-6 h-6" strokeWidth={2} />
+              </div>
+              <h3 className="text-[17px] font-semibold tracking-[-0.022em] text-label">Kayıtlı Görüşme Yok</h3>
+              <p className="text-[14px] text-label-2 max-w-xs mt-1 leading-relaxed">
+                Canlı tercümeyi başlatıp hastayla konuştuğunuzda diyaloglar burada otomatik olarak arşivlenir.
+              </p>
+            </div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="text-center py-12 text-[14px] text-label-2">
+              "{searchQuery}" ile eşleşen görüşme bulunamadı.
+            </div>
+          ) : (
+            <div className="group-list">
+              {filteredHistory.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 pl-4 pr-3 py-3 transition-colors hover:bg-fill-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItem(item)}
+                    className="flex items-start gap-3 flex-1 min-w-0 text-left cursor-pointer"
+                  >
+                    <span className="mt-1">
+                      <CountryFlag
+                        flag={item.targetLanguage.flag}
+                        code={item.targetLanguage.code}
+                        country={item.targetLanguage.country}
+                        size="md"
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="text-[16px] font-semibold tracking-[-0.016em] text-label truncate">
+                          {item.targetLanguage.nameTr}
+                        </span>
+                        <span className="text-[13px] text-label-2 tabular shrink-0">{formatDate(item.createdAt)}</span>
+                      </span>
+                      {item.previewText && (
+                        <span className="block text-[14px] text-label-2 leading-snug line-clamp-2 mt-0.5">
+                          {item.previewText}
+                        </span>
+                      )}
+                      <span className="mt-1.5 flex items-center gap-2 text-[12px] text-label-3">
+                        <span className="tabular">{item.messages.length} mesaj</span>
+                        {item.summary && (
+                          <span className="inline-flex items-center gap-1 text-accent-ink font-medium">
+                            <Sparkles className="w-3 h-3" strokeWidth={2.25} />
+                            Özet var
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </button>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              aria-label="Kapat"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {!selectedItem ? (
-            /* LIST VIEW */
-            <>
-              {/* Search Bar */}
-              {history.length > 0 && (
-                <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Konuşma metni, şikayet, ilaç veya dilde ara..."
-                      className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-2 pl-9 pr-8 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-                    />
-                    {searchQuery && (
+                  <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                    {confirmDeleteId === item.id ? (
+                      <div className="flex items-center gap-1 anim-fade">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="pressable h-7 px-2.5 rounded-full btn-gray text-[12px] font-medium cursor-pointer"
+                        >
+                          Vazgeç
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteHistoryItem(item.id);
+                            setConfirmDeleteId(null);
+                          }}
+                          className="pressable h-7 px-2.5 rounded-full bg-sys-red text-white text-[12px] font-semibold cursor-pointer"
+                          title="Kalıcı Olarak Sil"
+                        >
+                          Sil
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        onClick={() => setConfirmDeleteId(item.id)}
+                        className="pressable w-8 h-8 rounded-full text-label-3 hover:text-sys-red hover:bg-sys-red/10 flex items-center justify-center cursor-pointer"
+                        title="Bu Görüşmeyi Sil"
+                        aria-label="Sil"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" strokeWidth={2} />
                       </button>
                     )}
                   </div>
                 </div>
-              )}
-
-              {/* History List Items */}
-              <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
-                {history.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
-                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-500 mb-3 shadow-sm">
-                      <Clock className="w-7 h-7" />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                      Henüz Kayıtlı Görüşme Yok
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mt-1">
-                      Canlı tercümeyi başlatıp hastayla konuştuktan sonra tüm diyaloglar burada otomatik olarak arşivlenir.
-                    </p>
-                  </div>
-                ) : filteredHistory.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 text-xs">
-                    "{searchQuery}" aramasıyla eşleşen görüşme bulunamadı.
-                  </div>
-                ) : (
-                  filteredHistory.map((item) => (
-                    <div
-                      key={item.id}
-                      className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/60 transition-all group shadow-xs hover:border-indigo-400/40"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedItem(item)}
-                          className="flex items-center gap-2.5 flex-1 min-w-0 text-left cursor-pointer"
-                        >
-                          <CountryFlag flag={item.targetLanguage.flag} code={item.targetLanguage.code} country={item.targetLanguage.country} size="lg" />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                {item.targetLanguage.nameTr}
-                              </h4>
-                              <span className="text-[10px] text-slate-400 font-medium">
-                                ({item.targetLanguage.name})
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-400 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
-                              <Calendar className="w-3 h-3" />
-                              <span>{formatDate(item.createdAt)}</span>
-                              <span>•</span>
-                              <span>{item.messages.length} mesaj</span>
-                            </p>
-                          </div>
-                        </button>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {item.summary && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-600 text-white flex items-center gap-1">
-                              <Sparkles className="w-2.5 h-2.5" />
-                              <span>Konuşma Özeti</span>
-                            </span>
-                          )}
-
-                          {confirmDeleteId === item.id ? (
-                            <div className="flex items-center gap-1 animate-in fade-in duration-150">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onDeleteHistoryItem(item.id);
-                                  setConfirmDeleteId(null);
-                                }}
-                                className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
-                                title="Kalıcı Olarak Sil"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Sil</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteId(null)}
-                                className="px-2 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-[11px] font-medium cursor-pointer"
-                              >
-                                Vazgeç
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteId(item.id)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                              title="Bu Görüşmeyi Sil"
-                              aria-label="Sil"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Preview Snippet */}
-                      {item.previewText && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedItem(item)}
-                          className="w-full text-left text-xs text-slate-600 dark:text-slate-300 mt-2.5 line-clamp-2 leading-relaxed bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 rounded-xl font-normal cursor-pointer"
-                        >
-                          {item.previewText}
-                        </button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Bottom Clear All Bar */}
-              {history.length > 0 && (
-                <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between shrink-0">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Toplam {history.length} kayıtlı görüşme
-                  </span>
-                  {confirmClearAll ? (
-                    <div className="flex items-center gap-2 animate-in fade-in duration-150">
-                      <span className="text-xs text-rose-600 dark:text-rose-400 font-semibold">
-                        Tümü kalıcı silinsin mi?
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClearAllHistory();
-                          setConfirmClearAll(false);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-                      >
-                        Evet, Hepsini Sil
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmClearAll(false)}
-                        className="px-2 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium cursor-pointer"
-                      >
-                        Vazgeç
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmClearAll(true)}
-                      className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 flex items-center gap-1.5 font-semibold cursor-pointer px-2.5 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Tüm Geçmişi Temizle</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            /* DETAILED CONVERSATION VIEW */
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-              {/* Top Banner Action */}
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <CountryFlag flag={selectedItem.targetLanguage.flag} code={selectedItem.targetLanguage.code} country={selectedItem.targetLanguage.country} size="lg" />
-                  <div>
-                    <p className="text-xs font-bold text-slate-900 dark:text-white">
-                      {selectedItem.targetLanguage.nameTr} Görüşmesi
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {formatDate(selectedItem.createdAt)} • {selectedItem.messages.length} mesaj
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onDeleteHistoryItem(selectedItem.id);
-                      setSelectedItem(null);
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border border-rose-200 dark:border-rose-800"
-                    title="Bu görüşmeyi kalıcı olarak sil"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Sil</span>
-                  </button>
-
-                  {onRestoreConversation && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onRestoreConversation(selectedItem);
-                        onClose();
-                      }}
-                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                      title="Bu görüşmeyi ana ekrana yükle"
-                    >
-                      <span>Ekrana Yükle</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Clinical Summary Section (if present) */}
-              {selectedItem.summary && (
-                <div className="rounded-2xl p-4 space-y-2.5 bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60">
-                  <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-xs">
-                    <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                    <span>Kayıtlı Konuşma Özeti</span>
-                  </div>
-
-                  <p className="text-xs text-slate-800 dark:text-slate-200 font-medium leading-relaxed bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-teal-100 dark:border-teal-900/50">
-                    {selectedItem.summary.briefSummaryTr}
-                  </p>
-
-                  {selectedItem.summary.patientChiefComplaints.length > 0 && (
-                    <div className="text-xs space-y-1">
-                      <p className="font-bold text-slate-700 dark:text-slate-300">Hastanın Şikayetleri:</p>
-                      <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 pl-1">
-                        {selectedItem.summary.patientChiefComplaints.map((c: string) => (
-                          <li key={c}>{c}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {selectedItem.summary.vitalSignsAndDosages.length > 0 && (
-                    <div className="text-xs space-y-1">
-                      <p className="font-bold text-slate-700 dark:text-slate-300">İlaç ve Dozajlar:</p>
-                      <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 pl-1">
-                        {selectedItem.summary.vitalSignsAndDosages.map((c: string) => (
-                          <li key={c}>{c}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Messages Stream */}
-              <div className="space-y-2.5 pt-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Diyalog Akışı ({selectedItem.messages.length})</span>
-                </h4>
-
-                {selectedItem.messages
-                  .filter((m: TranscriptMessage) => m.speaker === 'nurse' || m.speaker === 'patient')
-                  .map((msg: TranscriptMessage) => {
-                    const isNurse = msg.speaker === 'nurse';
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col ${isNurse ? 'items-end' : 'items-start'}`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1 px-1">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                              isNurse
-                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                                : 'bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-700 font-extrabold shadow-xs'
-                            }`}
-                          >
-                            {isNurse ? (
-                              <>
-                                <CountryFlag flag="🇹🇷" code="tr" country="Türkiye" size="xs" />
-                                <span>Hemşire (Türkçe)</span>
-                              </>
-                            ) : (
-                              <>
-                                <CountryFlag flag={selectedItem.targetLanguage.flag} code={selectedItem.targetLanguage.code} country={selectedItem.targetLanguage.country} size="xs" />
-                                <span>Hasta ({selectedItem.targetLanguage.nameTr})</span>
-                              </>
-                            )}
-                          </span>
-                        </div>
-
-                        <div
-                          className={`max-w-[85%] rounded-2xl p-3 shadow-2xs ${
-                            isNurse
-                              ? 'bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-tr-xs'
-                              : 'bg-gradient-to-r from-teal-600 to-cyan-700 text-white rounded-tl-xs shadow-md shadow-teal-500/20'
-                          }`}
-                        >
-                          <p className="text-xs sm:text-sm font-medium leading-relaxed">
-                            {msg.originalText}
-                          </p>
-
-                          {msg.translatedText && (
-                            <div
-                              className={`mt-2 pt-2 text-xs border-t ${
-                                isNurse
-                                  ? 'border-slate-200 dark:border-slate-700 text-teal-600 dark:text-teal-400 font-semibold'
-                                  : 'border-white/20 text-teal-50'
-                              }`}
-                            >
-                              <span className="text-[10px] uppercase font-bold opacity-80 block mb-0.5">
-                                Çeviri:
-                              </span>
-                              <span>{msg.translatedText}</span>
-                            </div>
-                          )}
-
-                          {msg.highlightedDosages && msg.highlightedDosages.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {msg.highlightedDosages.map((d: string) => (
-                                <span
-                                  key={d}
-                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-200 border border-amber-400/30"
-                                >
-                                  💊 {d}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          {(() => {
-                            const tutorial = detectMedicalTutorialVideo(msg.originalText, msg.translatedText);
-                            const hasTutorial =
-                              msg.showTutorialVideo ||
-                              msg.showNurseCallTutorial ||
-                              tutorial.shouldShow;
-                            if (!hasTutorial) return null;
-
-                            const isTriflow =
-                              msg.tutorialVideoType === 'triflow' ||
-                              tutorial.type === 'triflow';
-
-                            return (
-                              <div className="mt-2 pt-1.5 border-t border-black/10 dark:border-white/10 flex items-center gap-1.5 text-[10px] font-bold text-teal-600 dark:text-teal-400">
-                                {isTriflow ? (
-                                  <>
-                                    <Activity className="w-3 h-3 text-cyan-500 shrink-0" />
-                                    <span>Triflow Solunum Cihazı Eğitim Videosu Gösterildi</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Bell className="w-3 h-3 text-red-500 shrink-0" />
-                                    <span>Hemşire Çağrı Butonu Eğitim Videosu Gösterildi</span>
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
-    </div>
+      ) : (
+        /* DETAIL VIEW */
+        <div className="anim-fade space-y-5">
+          <div className="flex items-center gap-2">
+            {onRestoreConversation && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRestoreConversation(selectedItem);
+                  onClose();
+                }}
+                className="pressable btn-primary flex-1 h-11 rounded-[12px] inline-flex items-center justify-center gap-2 text-[15px] font-semibold cursor-pointer"
+                title="Bu görüşmeyi ana ekrana yükle"
+              >
+                <ArrowUpRight className="w-4 h-4" strokeWidth={2.5} />
+                <span>Ekrana Yükle</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                onDeleteHistoryItem(selectedItem.id);
+                setSelectedItem(null);
+              }}
+              className="pressable h-11 px-4 rounded-[12px] bg-sys-red/10 text-sys-red inline-flex items-center justify-center gap-2 text-[15px] font-medium cursor-pointer"
+              title="Bu görüşmeyi kalıcı olarak sil"
+            >
+              <Trash2 className="w-4 h-4" strokeWidth={2} />
+              <span>Sil</span>
+            </button>
+          </div>
+
+          {selectedItem.summary && (
+            <div>
+              <h4 className="px-4 mb-1.5 text-[13px] font-medium text-label-2 inline-flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-accent" strokeWidth={2.25} />
+                Kayıtlı konuşma özeti
+              </h4>
+              <div className="group-list">
+                <p className="px-4 py-3 text-[15px] leading-relaxed text-label">{selectedItem.summary.briefSummaryTr}</p>
+                {selectedItem.summary.patientChiefComplaints.length > 0 && (
+                  <div className="px-4 py-3">
+                    <p className="text-[13px] font-medium text-label-2 mb-1">Hastanın şikayetleri</p>
+                    <ul className="space-y-1">
+                      {selectedItem.summary.patientChiefComplaints.map((c: string) => (
+                        <li key={c} className="text-[15px] text-label flex items-start gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sys-pink mt-2 shrink-0" />
+                          {c}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {selectedItem.summary.vitalSignsAndDosages.length > 0 && (
+                  <div className="px-4 py-3">
+                    <p className="text-[13px] font-medium text-label-2 mb-1">İlaç ve dozajlar</p>
+                    <ul className="space-y-1">
+                      {selectedItem.summary.vitalSignsAndDosages.map((c: string) => (
+                        <li key={c} className="text-[15px] text-label flex items-start gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sys-green mt-2 shrink-0" />
+                          {c}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <h4 className="px-4 mb-2 text-[13px] font-medium text-label-2 inline-flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5" strokeWidth={2.25} />
+              Diyalog akışı
+            </h4>
+
+            <div className="space-y-3">
+              {selectedItem.messages
+                .filter((m: TranscriptMessage) => m.speaker === 'nurse' || m.speaker === 'patient')
+                .map((msg: TranscriptMessage) => {
+                  const isNurse = msg.speaker === 'nurse';
+                  const tutorial = detectMedicalTutorialVideo(msg.originalText, msg.translatedText);
+                  const hasTutorial = msg.showTutorialVideo || msg.showNurseCallTutorial || tutorial.shouldShow;
+                  const isTriflow = msg.tutorialVideoType === 'triflow' || tutorial.type === 'triflow';
+
+                  return (
+                    <div key={msg.id} className={`flex flex-col ${isNurse ? 'items-end' : 'items-start'}`}>
+                      <span className="flex items-center gap-1.5 mb-1 px-2 text-[12px] font-medium text-label-2">
+                        {isNurse ? (
+                          <>
+                            <CountryFlag flag="🇹🇷" code="tr" country="Türkiye" size="xs" />
+                            Hemşire · Türkçe
+                          </>
+                        ) : (
+                          <>
+                            <CountryFlag
+                              flag={selectedItem.targetLanguage.flag}
+                              code={selectedItem.targetLanguage.code}
+                              country={selectedItem.targetLanguage.country}
+                              size="xs"
+                            />
+                            Hasta · {selectedItem.targetLanguage.nameTr}
+                          </>
+                        )}
+                      </span>
+
+                      <div
+                        className={`max-w-[88%] rounded-[18px] px-4 py-3 ${
+                          isNurse ? 'bg-accent text-white rounded-br-[6px]' : 'bg-surface text-label rounded-bl-[6px] shadow-card'
+                        }`}
+                      >
+                        <p className="text-[15px] leading-snug tracking-[-0.012em]">{msg.originalText}</p>
+
+                        {msg.translatedText && (
+                          <p
+                            className={`mt-2 pt-2 text-[14px] leading-snug border-t ${
+                              isNurse ? 'border-white/25 text-white/85' : 'border-separator text-label-2'
+                            }`}
+                          >
+                            {msg.translatedText}
+                          </p>
+                        )}
+
+                        {msg.highlightedDosages && msg.highlightedDosages.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {msg.highlightedDosages.map((d: string) => (
+                              <span
+                                key={d}
+                                className={`text-[12px] font-medium px-2 py-0.5 rounded-full ${
+                                  isNurse ? 'bg-white/20 text-white' : 'bg-sys-orange/15 text-sys-orange'
+                                }`}
+                              >
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {hasTutorial && (
+                          <div
+                            className={`mt-2 flex items-center gap-1.5 text-[12px] font-medium ${
+                              isNurse ? 'text-white/85' : 'text-accent-ink'
+                            }`}
+                          >
+                            {isTriflow ? (
+                              <>
+                                <Activity className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} />
+                                <span>Triflow eğitim videosu gösterildi</span>
+                              </>
+                            ) : (
+                              <>
+                                <Bell className="w-3.5 h-3.5 shrink-0" strokeWidth={2.25} />
+                                <span>Hemşire çağrı butonu videosu gösterildi</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+    </Sheet>
   );
 };

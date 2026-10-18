@@ -1,59 +1,59 @@
-import type { FC } from 'react';
-import { WifiOff, MicOff, AlertCircle } from 'lucide-react';
+import type { FC, ReactNode } from 'react';
+import { WifiOff, MicOff, AlertCircle, X } from 'lucide-react';
 
 interface NoticeProps {
   onDismiss?: () => void;
 }
 
+/** Floating capsule toast anchored under the status bar. */
+const Toast: FC<{ icon: ReactNode; tint: string; children: ReactNode; onDismiss?: () => void }> = ({
+  icon,
+  tint,
+  children,
+  onDismiss,
+}) => (
+  <div
+    role="alert"
+    className="anim-toast fixed left-1/2 z-[60] w-[calc(100%-24px)] max-w-md"
+    style={{ top: 'calc(env(safe-area-inset-top, 0px) + 10px)', transform: 'translateX(-50%)' }}
+  >
+    <div className="flex items-center gap-3 pl-3 pr-2 py-2 rounded-[18px] bg-elevated/90 backdrop-blur-xl shadow-float">
+      <span className={`glyph w-8 h-8 rounded-full ${tint}`}>{icon}</span>
+      <p className="flex-1 text-[13px] leading-snug font-medium text-label">{children}</p>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Kapat"
+          className="pressable w-7 h-7 rounded-full bg-fill text-label-2 flex items-center justify-center shrink-0 cursor-pointer"
+        >
+          <X className="w-3.5 h-3.5" strokeWidth={2.5} />
+        </button>
+      )}
+    </div>
+  </div>
+);
+
 export const OfflineNotice: FC<NoticeProps> = () => {
   return (
-    <div className="bg-amber-500 dark:bg-amber-600 text-white text-xs font-semibold py-2 px-4 flex items-center justify-center gap-2 shadow-sm animate-in slide-in-from-top duration-300">
-      <WifiOff className="w-4 h-4 shrink-0" />
-      <span>İnternet bağlantısı gerekli.</span>
-    </div>
+    <Toast tint="bg-sys-orange" icon={<WifiOff className="w-4 h-4" strokeWidth={2.25} />}>
+      İnternet bağlantısı gerekli.
+    </Toast>
   );
 };
 
 export const PermissionNotice: FC<NoticeProps> = ({ onDismiss }) => {
   return (
-    <div className="bg-rose-600 dark:bg-rose-700 text-white text-xs font-semibold py-2.5 px-4 flex items-center justify-between gap-2 shadow-sm animate-in slide-in-from-top duration-300">
-      <div className="flex items-center gap-2">
-        <MicOff className="w-4 h-4 shrink-0" />
-        <span>Sesli tercüman için mikrofon izni gerekiyor. Lütfen tarayıcı ayarlarından mikrofon iznini etkinleştirin.</span>
-      </div>
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="text-white/80 hover:text-white text-xs underline uppercase ml-2 shrink-0 cursor-pointer"
-        >
-          Kapat
-        </button>
-      )}
-    </div>
+    <Toast tint="bg-sys-red" icon={<MicOff className="w-4 h-4" strokeWidth={2.25} />} onDismiss={onDismiss}>
+      Sesli tercüman için mikrofon izni gerekiyor. Lütfen tarayıcı ayarlarından mikrofon iznini etkinleştirin.
+    </Toast>
   );
 };
 
-export const ErrorNotice: FC<{ message: string; onDismiss?: () => void }> = ({
-  message,
-  onDismiss,
-}) => {
+export const ErrorNotice: FC<{ message: string; onDismiss?: () => void }> = ({ message, onDismiss }) => {
   return (
-    <div className="bg-slate-900 dark:bg-slate-800 text-white text-xs font-semibold py-2.5 px-4 flex items-center justify-between gap-2 shadow-sm border-b border-slate-700/50">
-      <div className="flex items-center gap-2">
-        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-        <span>{message}</span>
-      </div>
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="text-white/80 hover:text-white text-xs underline ml-2 shrink-0 cursor-pointer"
-        >
-          Kapat
-        </button>
-      )}
-    </div>
+    <Toast tint="bg-sys-red" icon={<AlertCircle className="w-4 h-4" strokeWidth={2.25} />} onDismiss={onDismiss}>
+      {message}
+    </Toast>
   );
 };
-

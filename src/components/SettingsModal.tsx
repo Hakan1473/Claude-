@@ -1,37 +1,27 @@
 import { useState, useRef, useEffect, type FC } from 'react';
 import {
-  X,
   Sun,
   Moon,
-  HelpCircle,
   Clock,
-  Shield,
-  Settings,
   ChevronRight,
-  Trash2,
-  Volume2,
-  VolumeX,
   Check,
-  Sparkles,
+  CheckCircle2,
   Tablet,
-  Radio,
-  Video,
   Play,
-  Pause,
-  FileText,
+  Square,
   Monitor,
   ShieldCheck,
   BookOpen,
+  Bell,
+  Wind,
+  Lock,
 } from 'lucide-react';
 import type { GeminiVoiceName } from '../types/interpreter';
 import { GEMINI_VOICE_OPTIONS } from '../utils/voiceOptions';
 import { playNormalizedAudioWav } from '../services/audio/pcmHelper';
-import {
-  NURSE_CALL_VIDEO_URL,
-  NURSE_CALL_ALT_VIDEO_URL,
-  TRIFLOW_VIDEO_URL,
-  TRIFLOW_ALT_VIDEO_URL,
-} from '../utils/medicalTutorialDetection';
+import { NURSE_CALL_VIDEO_URL, TRIFLOW_VIDEO_URL } from '../utils/medicalTutorialDetection';
+import { Sheet } from './ui/Sheet';
+import { SegmentedControl } from './ui/SegmentedControl';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -160,663 +150,412 @@ export const SettingsModal: FC<SettingsModalProps> = ({
 
   const currentVoiceObj = GEMINI_VOICE_OPTIONS.find((v) => v.id === selectedVoice);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl md:max-w-2xl bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
-        
-        {/* Header with Title and Close Button */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 shrink-0">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="p-1.5 sm:p-2 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-              <Settings className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
-                Ayarlar & Tercihler
-              </h2>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
-                Seslendirme, arayüz teması ve sistem yönetimi
-              </p>
-            </div>
-          </div>
+  const sectionHeader = (text: string) => (
+    <h3 className="px-4 mb-1.5 text-[13px] font-medium text-label-2 tracking-[-0.004em]">{text}</h3>
+  );
+  const sectionFooter = (text: React.ReactNode) => (
+    <p className="px-4 mt-2 text-[13px] leading-snug text-label-2">{text}</p>
+  );
 
+  const videoModules: {
+    id: 'nurse_call' | 'triflow';
+    title: string;
+    desc: string;
+    url: string;
+    glyph: string;
+    icon: typeof Bell;
+  }[] = [
+    {
+      id: 'nurse_call',
+      title: 'Hemşire Çağrı Butonu',
+      desc: '"Beni çağırmak için butona basın" dendiğinde hastaya kullanım videosu açılır.',
+      url: NURSE_CALL_VIDEO_URL,
+      glyph: 'bg-sys-red',
+      icon: Bell,
+    },
+    {
+      id: 'triflow',
+      title: 'Triflow Solunum Cihazı',
+      desc: '"Triflow ile derin nefes çekin" talimatında doğru nefes egzersizi gösterilir.',
+      url: TRIFLOW_VIDEO_URL,
+      glyph: 'bg-sys-teal',
+      icon: Wind,
+    },
+  ];
+
+  const anamnesisFeatures: [string, string][] = [
+    ['Anında analiz', 'Konuşma devam ederken şikayetler, ilaçlar ve öyküler anlık olarak yan panele işlenir.'],
+    ['Doz olmadan ilaç tespiti', 'Parol, Beloc, Novalgin gibi ilaçlar doz söylenmese bile temiz isimleriyle yakalanır.'],
+    ['Akıllı tekilleştirme', 'Aynı alerji veya hastalık defalarca söylense de tek kayıt olarak listelenir.'],
+    ['Olumsuzluk filtresi', '"Alerjim yok", "Ameliyat olmadım" gibi yokluk bildirimleri kaydedilmez.'],
+    ['HBYS formatında kopyalama', 'Panelin üstündeki Kopyala ile tüm anamnez tek dokunuşla kayıt sistemine aktarılır.'],
+  ];
+
+  return (
+    <Sheet
+      onClose={onClose}
+      title="Ayarlar"
+      subtitle="Seslendirme, görünüm ve sistem yönetimi"
+      widthClass="sm:max-w-2xl"
+      fixedHeight
+      bodyClassName="px-4 sm:px-6 pb-6"
+      footer={
+        <>
+          <span className="flex-1 text-[12px] text-label-3">İki Yönlü Canlı Çevirmen v2.2</span>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            aria-label="Kapat"
-            title="Kapat"
+            className="pressable btn-primary h-9 px-5 rounded-full text-[15px] font-semibold cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            Bitti
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="sheet-sticky sticky top-0 z-10 pb-4">
+        <SegmentedControl
+          ariaLabel="Ayar kategorileri"
+          value={activeTab}
+          onChange={setActiveTab}
+          items={[
+            { id: 'voice', label: 'Ses' },
+            { id: 'appearance', label: 'Görünüm' },
+            {
+              id: 'history',
+              label: 'Geçmiş',
+              badge:
+                historyCount > 0 ? <span className="text-[12px] text-label-2 tabular">{historyCount}</span> : undefined,
+            },
+            { id: 'guide', label: 'Kılavuz' },
+          ]}
+        />
+      </div>
 
-        {/* Modular Navigation Tabs (Touch-Optimized & 100% Responsive for Mobile & Desktop) */}
-        <div className="px-2 sm:px-5 pt-2 sm:pt-3.5 pb-2 bg-slate-50/90 dark:bg-slate-850/80 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <nav
-            role="tablist"
-            aria-label="Ayar kategorileri"
-            className="grid grid-cols-4 gap-1 sm:gap-1.5 p-1 bg-slate-200/70 dark:bg-slate-800/90 rounded-2xl"
-          >
-            {/* Tab 1: Ses Seçimi */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'voice'}
-              onClick={() => setActiveTab('voice')}
-              className={`py-2 px-1 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer text-center ${
-                activeTab === 'voice'
-                  ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-sm font-extrabold ring-1 ring-black/5 dark:ring-white/10'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-slate-700/40'
-              }`}
-            >
-              <Volume2 className="w-4 h-4 shrink-0" />
-              <span className="text-[11px] sm:text-xs font-bold leading-tight truncate w-full text-center">
-                Ses Seçimi
-              </span>
-            </button>
+      {/* VOICE */}
+      {activeTab === 'voice' && (
+        <div className="anim-fade space-y-6">
+          <div>
+            {sectionHeader('Tercüman sesi')}
+            <div className="group-list">
+              {GEMINI_VOICE_OPTIONS.map((voice) => {
+                const isSelected = selectedVoice === voice.id;
+                const isTesting = testingVoiceId === voice.id;
+                const isFemale = voice.gender === 'female';
 
-            {/* Tab 2: Görünüm & Tema */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'appearance'}
-              onClick={() => setActiveTab('appearance')}
-              className={`py-2 px-1 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer text-center ${
-                activeTab === 'appearance'
-                  ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-sm font-extrabold ring-1 ring-black/5 dark:ring-white/10'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-slate-700/40'
-              }`}
-            >
-              <Sun className="w-4 h-4 shrink-0" />
-              <span className="text-[11px] sm:text-xs font-bold leading-tight truncate w-full text-center">
-                Görünüm
-              </span>
-            </button>
-
-            {/* Tab 3: Geçmiş */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'history'}
-              onClick={() => setActiveTab('history')}
-              className={`py-2 px-1 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer text-center relative ${
-                activeTab === 'history'
-                  ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-sm font-extrabold ring-1 ring-black/5 dark:ring-white/10'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-slate-700/40'
-              }`}
-            >
-              <div className="relative flex items-center justify-center">
-                <Clock className="w-4 h-4 shrink-0" />
-                {historyCount > 0 && (
-                  <span className="sm:hidden absolute -top-1 -right-2 px-1 min-w-[14px] h-[14px] rounded-full text-[8.5px] font-extrabold bg-teal-600 text-white flex items-center justify-center shadow-xs">
-                    {historyCount}
-                  </span>
-                )}
-              </div>
-              <span className="text-[11px] sm:text-xs font-bold leading-tight truncate w-full text-center">
-                Geçmiş
-              </span>
-              {historyCount > 0 && (
-                <span className="hidden sm:inline-flex px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
-                  {historyCount}
-                </span>
-              )}
-            </button>
-
-            {/* Tab 4: Rehber & Kılavuz */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'guide'}
-              onClick={() => setActiveTab('guide')}
-              className={`py-2 px-1 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer text-center ${
-                activeTab === 'guide'
-                  ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-sm font-extrabold ring-1 ring-black/5 dark:ring-white/10'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-slate-700/40'
-              }`}
-            >
-              <BookOpen className="w-4 h-4 shrink-0" />
-              <span className="text-[11px] sm:text-xs font-bold leading-tight truncate w-full text-center">
-                Kılavuz
-              </span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Tab Content Body (Scrollable) */}
-        <div className="p-3.5 sm:p-6 overflow-y-auto flex-1">
-
-          {/* ==================================================== */}
-          {/* TAB 1: SES SEÇİMİ (YAPAY ZEKA SES SEÇENEKLERİ)         */}
-          {/* ==================================================== */}
-          {activeTab === 'voice' && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Header Box with Active Status */}
-              <div className="p-3.5 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                      Aktif Ses:{' '}
-                      <span className="text-teal-700 dark:text-teal-300">
-                        {currentVoiceObj?.name} ({currentVoiceObj?.gender === 'female' ? 'Kadın' : 'Erkek'})
-                      </span>
-                    </h3>
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                    Tercüman çevirileri bu ses ile seslendirir. Yanındaki butona basarak sesi önceden dinleyebilirsiniz.
-                  </p>
-                </div>
-
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-teal-300 dark:border-teal-700 text-[10px] font-bold text-teal-700 dark:text-teal-300 shrink-0">
-                  <Sparkles className="w-3 h-3 text-teal-500" />
-                  <span>Doğal İnsan Sesi</span>
-                </div>
-              </div>
-
-              {/* 6 Gemini Voices Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {GEMINI_VOICE_OPTIONS.map((voice) => {
-                  const isSelected = selectedVoice === voice.id;
-                  const isTesting = testingVoiceId === voice.id;
-
-                  return (
-                    <div
-                      key={voice.id}
-                      onClick={() => onSelectVoice?.(voice.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          onSelectVoice?.(voice.id);
-                        }
-                      }}
-                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative group flex flex-col justify-between ${
-                        isSelected
-                          ? 'bg-teal-50/90 dark:bg-teal-950/50 border-teal-500 dark:border-teal-400 ring-2 ring-teal-500/20 shadow-xs'
-                          : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:bg-slate-100/90 dark:hover:bg-slate-800/90'
+                return (
+                  <div
+                    key={voice.id}
+                    onClick={() => onSelectVoice?.(voice.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        onSelectVoice?.(voice.id);
+                      }
+                    }}
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-fill-2 active:bg-fill"
+                  >
+                    <span
+                      className={`w-10 h-10 rounded-full flex items-center justify-center text-[16px] font-semibold text-white shrink-0 ${
+                        isFemale
+                          ? 'bg-[linear-gradient(160deg,#ff8fa3,#ff2d55)]'
+                          : 'bg-[linear-gradient(160deg,#7ab8ff,#0071e3)]'
                       }`}
                     >
-                      {/* Top Row: Avatar, Name, Gender Pill, Preview Button, Radio Indicator */}
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs transition-transform group-hover:scale-105 ${
-                              isSelected
-                                ? 'bg-teal-600 text-white shadow-xs'
-                                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            {voice.name[0]}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                                {voice.name}
-                              </h4>
-                              <span
-                                className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md ${
-                                  voice.gender === 'female'
-                                    ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60'
-                                    : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
-                                }`}
-                              >
-                                {voice.gender === 'female' ? 'Kadın' : 'Erkek'}
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 mt-0.5">
-                              {voice.toneTr}
-                            </p>
-                          </div>
-                        </div>
+                      {voice.name[0]}
+                    </span>
 
-                        {/* Actions (Dinle & Select Radio) */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {/* Audio Preview Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => handleTestVoice(voice.id, e)}
-                            title={isTesting ? 'Sesi Durdur' : 'Örnek Sesi Dinle'}
-                            className={`py-1 px-2 rounded-lg border text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                              isTesting
-                                ? 'bg-rose-600 text-white border-rose-600 shadow-xs animate-pulse ring-2 ring-rose-400/40'
-                                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:text-teal-700 hover:border-teal-400 dark:hover:text-teal-300'
-                            }`}
-                          >
-                            {isTesting ? (
-                              <>
-                                <VolumeX className="w-3 h-3 text-white" />
-                                <span>Durdur</span>
-                              </>
-                            ) : (
-                              <>
-                                <Volume2 className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                                <span>Dinle</span>
-                              </>
-                            )}
-                          </button>
-
-                          {/* Selected Checkmark / Radio Indicator */}
-                          <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
-                              isSelected
-                                ? 'bg-teal-600 text-white'
-                                : 'border border-slate-300 dark:border-slate-600 text-transparent'
-                            }`}
-                          >
-                            <Check className="w-3 h-3 stroke-[3]" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Voice Persona Description */}
-                      <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                        {voice.descriptionTr}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[16px] font-medium tracking-[-0.016em] text-label truncate">
+                        {voice.name}
+                        <span className="ml-1.5 text-[13px] font-normal text-label-2">{isFemale ? 'Kadın' : 'Erkek'}</span>
                       </p>
+                      <p className="text-[13px] text-label-2 leading-snug truncate">{voice.toneTr}</p>
+                      <p className="text-[12px] text-label-3 leading-snug line-clamp-1 mt-0.5">{voice.descriptionTr}</p>
                     </div>
-                  );
-                })}
-              </div>
 
-              {/* Informative Note */}
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                <Radio className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-                <span>
-                  Ses seçimi konuşma devam ederken değiştirilirse tercüman bir sonraki cümleyi kesinti olmadan yeni sesle seslendirir.
-                </span>
-              </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleTestVoice(voice.id, e)}
+                      title={isTesting ? 'Sesi Durdur' : 'Örnek Sesi Dinle'}
+                      aria-label={isTesting ? 'Sesi Durdur' : 'Örnek Sesi Dinle'}
+                      className={`pressable w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-pointer ${
+                        isTesting ? 'btn-primary' : 'btn-tinted'
+                      }`}
+                    >
+                      {isTesting ? (
+                        <Square className="w-3 h-3 fill-current" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                      )}
+                    </button>
+
+                    <span className="w-5 flex justify-center shrink-0">
+                      {isSelected && <Check className="w-5 h-5 text-accent" strokeWidth={2.75} />}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          )}
+            {sectionFooter(
+              <>
+                Aktif ses: <span className="text-label font-medium">{currentVoiceObj?.name}</span>. Konuşma sırasında
+                değiştirilirse bir sonraki cümle kesintisiz olarak yeni sesle seslendirilir.
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
-          {/* ==================================================== */}
-          {/* TAB 2: GÖRÜNÜM & TEMA                                */}
-          {/* ==================================================== */}
-          {activeTab === 'appearance' && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
-                  Arayüz Teması
-                </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-                  Ortam ışığına ve nöbet saatinize uygun ekran temasını belirleyin
-                </p>
-              </div>
+      {/* APPEARANCE */}
+      {activeTab === 'appearance' && (
+        <div className="anim-fade space-y-6">
+          <div>
+            {sectionHeader('Görünüm')}
+            <div className="rounded-[14px] bg-surface dark:bg-surface-2 px-4 sm:px-8 pt-5 pb-4 grid grid-cols-2 gap-4 sm:gap-8">
+              {(['light', 'dark'] as const).map((mode) => {
+                const active = theme === mode;
+                const isDarkTile = mode === 'dark';
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      if (theme !== mode) onToggleTheme();
+                    }}
+                    aria-pressed={active}
+                    className="group flex flex-col items-center gap-3 cursor-pointer"
+                  >
+                    {/* Miniature screen preview */}
+                    <span
+                      className={`relative w-full max-w-[150px] aspect-[3/4] rounded-[18px] overflow-hidden p-2.5 flex flex-col gap-1.5 transition-shadow ${
+                        isDarkTile ? 'bg-black' : 'bg-[#f5f5f7]'
+                      } ${active ? 'ring-[3px] ring-accent' : 'ring-1 ring-separator group-hover:ring-label-3'}`}
+                    >
+                      <span className={`h-2 w-2/3 rounded-full ${isDarkTile ? 'bg-white/25' : 'bg-black/15'}`} />
+                      <span className="mx-auto mt-2 w-9 h-9 rounded-full bg-[#0071e3]" />
+                      <span className={`mt-2 flex-1 rounded-[10px] p-1.5 flex flex-col gap-1 ${isDarkTile ? 'bg-[#1c1c1e]' : 'bg-white'}`}>
+                        <span className={`h-1.5 w-4/5 rounded-full ${isDarkTile ? 'bg-white/20' : 'bg-black/10'}`} />
+                        <span className={`h-1.5 w-3/5 rounded-full ${isDarkTile ? 'bg-white/20' : 'bg-black/10'}`} />
+                        <span className="mt-auto h-4 w-4/5 self-end rounded-[6px] bg-[#0071e3]/25" />
+                      </span>
+                    </span>
+                    <span className="text-[15px] font-medium text-label inline-flex items-center gap-1.5">
+                      {isDarkTile ? <Moon className="w-4 h-4" strokeWidth={2} /> : <Sun className="w-4 h-4" strokeWidth={2} />}
+                      {isDarkTile ? 'Koyu' : 'Açık'}
+                    </span>
+                    <span
+                      className={`w-[22px] h-[22px] rounded-full flex items-center justify-center transition-colors ${
+                        active ? 'bg-accent text-white' : 'ring-[1.5px] ring-label-3'
+                      }`}
+                    >
+                      {active && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {sectionFooter('Açık mod gündüz klinik kullanımı, koyu mod gece nöbetleri ve loş hasta odaları için idealdir.')}
+          </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {/* Light Mode */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (theme !== 'light') onToggleTheme();
-                  }}
-                  className={`p-4 rounded-2xl text-left flex flex-col justify-between transition-all cursor-pointer active:scale-98 ${
-                    theme === 'light'
-                      ? 'bg-amber-50/80 border-2 border-amber-500 text-slate-900 shadow-sm ring-2 ring-amber-400/20'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full mb-3">
-                    <div className="p-2 rounded-xl bg-amber-100/70 text-amber-600">
-                      <Sun className="w-5 h-5" />
-                    </div>
-                    {theme === 'light' && (
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-4 ring-amber-400/20" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-900 dark:text-white">Aydınlık Mod</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                      Gündüz klinik ve poliklinik kullanımı için aydınlık, ferah arayüz
-                    </p>
-                  </div>
-                </button>
-
-                {/* Dark Mode */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (theme !== 'dark') onToggleTheme();
-                  }}
-                  className={`p-4 rounded-2xl text-left flex flex-col justify-between transition-all cursor-pointer active:scale-98 ${
-                    theme === 'dark'
-                      ? 'bg-teal-950/40 border-2 border-teal-500 text-white shadow-sm ring-2 ring-teal-400/20'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full mb-3">
-                    <div className="p-2 rounded-xl bg-teal-900/50 text-teal-400">
-                      <Moon className="w-5 h-5" />
-                    </div>
-                    {theme === 'dark' && (
-                      <span className="w-2.5 h-2.5 rounded-full bg-teal-400 ring-4 ring-teal-400/20" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-900 dark:text-white">Koyu Mod</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                      Gece nöbetleri ve loş hasta odaları için göz yormayan karanlık arayüz
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              {/* Tablet Optimization Tip */}
-              <div className="mt-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
-                  <Tablet className="w-4 h-4" />
-                </div>
+          <div>
+            <div className="group-list">
+              <div className="flex items-start gap-3 px-4 py-3">
+                <span className="glyph w-[29px] h-[29px] bg-sys-indigo mt-0.5">
+                  <Tablet className="w-4 h-4" strokeWidth={2.25} />
+                </span>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                    Büyük Ekranlı Tablet Optimizasyonu
-                  </h4>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    Sistem iPad, Galaxy Tab ve benzeri geniş ekranlı tabletlerde hem yatay hem dikey yönelimde maksimum okunabilirlik ve ergonomi için otomatik optimize edilmiştir.
+                  <p className="text-[16px] tracking-[-0.016em] text-label">Büyük Ekran Optimizasyonu</p>
+                  <p className="text-[13px] text-label-2 leading-snug mt-0.5">
+                    iPad, Galaxy Tab ve geniş ekranlarda yatay ve dikey yönelimde okunabilirlik için otomatik
+                    uyarlanır.
                   </p>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* ==================================================== */}
-          {/* TAB 3: GEÇMİŞ (ÖNCEKİ KONUŞMALAR)                    */}
-          {/* ==================================================== */}
-          {activeTab === 'history' && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
-                  Klinik Konuşma Geçmişi
-                </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-                  Önceki hasta-hemşire diyalogları, tıbbi dozajlar ve klinik özetler
-                </p>
+      {/* HISTORY */}
+      {activeTab === 'history' && (
+        <div className="anim-fade space-y-6">
+          {onOpenHistory && (
+            <div>
+              {sectionHeader('Klinik konuşma geçmişi')}
+              <div className="group-list">
+                <button
+                  type="button"
+                  onClick={handleOpenHistoryClick}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors hover:bg-fill-2 active:bg-fill"
+                >
+                  <span className="glyph w-[29px] h-[29px] bg-sys-indigo">
+                    <Clock className="w-4 h-4" strokeWidth={2.25} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[16px] tracking-[-0.016em] text-label">Önceki Konuşmaları Aç</span>
+                    <span className="block text-[13px] text-label-2">Seanslar, tarihler ve özet raporları</span>
+                  </span>
+                  {historyCount > 0 && <span className="text-[15px] text-label-2 tabular">{historyCount}</span>}
+                  <ChevronRight className="w-4 h-4 text-label-3" strokeWidth={2.5} />
+                </button>
               </div>
-
-              {/* History Access Button */}
-              {onOpenHistory && (
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={handleOpenHistoryClick}
-                    className="w-full p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-left transition-all cursor-pointer group active:scale-98"
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform border border-indigo-200 dark:border-indigo-800">
-                        <Clock className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">
-                            Önceki Konuşmaları Aç
-                          </p>
-                          {historyCount > 0 && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                              {historyCount} Kayıt
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          Tüm seansları, tarihleri ve özet raporları inceleyin
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-                  </button>
-
-                  {/* Clear History Button if items exist */}
-                  {historyCount > 0 && onClearHistory && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm('Tüm geçmiş konuşma kayıtları silinsin mi?')) {
-                          onClearHistory();
-                        }
-                      }}
-                      className="w-full py-2.5 px-3 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-rose-200/60 dark:border-rose-900/40"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Tüm Geçmiş Konuşmaları Temizle</span>
-                    </button>
-                  )}
-                </div>
-              )}
+              {sectionFooter('Hasta-hemşire konuşmaları yalnızca bu cihazın tarayıcı hafızasında saklanır.')}
             </div>
           )}
 
-          {/* ==================================================== */}
-          {/* TAB 4: REHBER & GÜVENLİK                             */}
-          {/* ==================================================== */}
-          {activeTab === 'guide' && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
-                  Kılavuz & Güvenlik
-                </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-                  Sistemi verimli kullanma adımları ve veri güvenliği ilkeleri
-                </p>
-              </div>
+          {historyCount > 0 && onClearHistory && (
+            <div className="group-list">
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Tüm geçmiş konuşma kayıtları silinsin mi?')) {
+                    onClearHistory();
+                  }
+                }}
+                className="w-full px-4 py-3 text-[16px] text-sys-red text-center cursor-pointer transition-colors hover:bg-fill-2 active:bg-fill"
+              >
+                Tüm Geçmiş Konuşmaları Temizle
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-              {/* Onboarding Interactive Guide Trigger */}
+      {/* GUIDE */}
+      {activeTab === 'guide' && (
+        <div className="anim-fade space-y-6">
+          <div>
+            {sectionHeader('Başlarken')}
+            <div className="group-list">
               <button
                 type="button"
                 onClick={handleOpenGuideClick}
-                className="w-full p-4 rounded-2xl bg-gradient-to-r from-teal-500/10 to-emerald-500/10 hover:from-teal-500/15 hover:to-emerald-500/15 dark:from-teal-950/40 dark:to-emerald-950/40 border border-teal-500/30 flex items-center justify-between text-left transition-all cursor-pointer group active:scale-98 shadow-2xs"
+                className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors hover:bg-fill-2 active:bg-fill"
               >
-                <div className="flex items-center gap-3.5">
-                  <div className="p-2.5 rounded-xl bg-teal-600 text-white group-hover:scale-105 transition-transform shadow-xs">
-                    <BookOpen className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">
-                        Adım Adım Hızlı Başlangıç Rehberi
-                      </p>
-                      <span className="text-[10px] px-2 py-0.2 rounded-full bg-teal-600 text-white font-bold">
-                        7 Adım
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Dil seçimi, çift yönlü konuşma, video kartları ve tablet modu anlatımı
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-teal-600 dark:text-teal-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              {/* SECTION: Videolu Eğitimler (Interactive Video Modules) */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
-                      <Video className="w-4 h-4" />
-                    </div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                      İnteraktif Videolu Eğitimler & Cihaz Rehberleri
-                    </h4>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                    Otomatik Algılama
+                <span className="glyph w-[29px] h-[29px] bg-accent">
+                  <BookOpen className="w-4 h-4" strokeWidth={2.25} />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[16px] tracking-[-0.016em] text-label">Hızlı Başlangıç Rehberi</span>
+                  <span className="block text-[13px] text-label-2 truncate">
+                    Dil seçimi, çift yönlü konuşma, video kartları ve tablet modu
                   </span>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Hemşire hastaya butonu veya solunum cihazını tarif ettiğinde sistem bunu konuşmadan anında saptar ve konuşma balonunun altında videolu rehber sunar. Aşağıdan videoları doğrudan önizleyebilirsiniz:
-                </p>
+                </span>
+                <span className="text-[15px] text-label-2">7 adım</span>
+                <ChevronRight className="w-4 h-4 text-label-3" strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
 
-                {/* Video Cards Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  {/* Video 1: Hemşire Çağrı Butonu */}
-                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col justify-between gap-2.5">
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                          Hemşire Çağrı Butonu
-                        </h5>
+          <div>
+            {sectionHeader('Videolu eğitimler')}
+            <div className="group-list">
+              {videoModules.map((mod) => {
+                const Icon = mod.icon;
+                const isOpenPreview = activeVideoPreview === mod.id;
+                return (
+                  <div key={mod.id} className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className={`glyph w-[29px] h-[29px] ${mod.glyph}`}>
+                        <Icon className="w-4 h-4" strokeWidth={2.25} />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[16px] tracking-[-0.016em] text-label">{mod.title}</p>
+                        <p className="text-[13px] text-label-2 leading-snug">{mod.desc}</p>
                       </div>
-                      <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                        "Beni çağırmak için butona basın" dendiğinde hastaya doğru kullanım videosu açılır.
-                      </p>
-                    </div>
-
-                    {activeVideoPreview === 'nurse_call' ? (
-                      <div className="flex flex-col gap-1.5 animate-in fade-in">
-                        <video
-                          src={NURSE_CALL_VIDEO_URL}
-                          controls
-                          autoPlay
-                          playsInline
-                          className="w-full rounded-lg bg-black aspect-video object-contain"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setActiveVideoPreview(null)}
-                          className="text-[10px] text-rose-600 dark:text-rose-400 font-bold self-end hover:underline cursor-pointer"
-                        >
-                          Videoyu Kapat
-                        </button>
-                      </div>
-                    ) : (
                       <button
                         type="button"
-                        onClick={() => setActiveVideoPreview('nurse_call')}
-                        className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-200 text-xs font-bold border border-teal-200 dark:border-teal-800 hover:bg-teal-100 transition-colors cursor-pointer"
+                        onClick={() => setActiveVideoPreview(isOpenPreview ? null : mod.id)}
+                        className={`pressable h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer shrink-0 ${
+                          isOpenPreview ? 'btn-gray' : 'btn-tinted'
+                        }`}
                       >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Videoyu İzle / Önizle</span>
+                        {isOpenPreview ? (
+                          <span>Kapat</span>
+                        ) : (
+                          <>
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>İzle</span>
+                          </>
+                        )}
                       </button>
-                    )}
-                  </div>
-
-                  {/* Video 2: Triflow Solunum Cihazı */}
-                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col justify-between gap-2.5">
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                        <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                          Triflow Solunum Cihazı
-                        </h5>
-                      </div>
-                      <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-tight">
-                        "Triflow ile derin nefes çekin" talimatı verildiğinde doğru nefes egzersizi gösterilir.
-                      </p>
                     </div>
-
-                    {activeVideoPreview === 'triflow' ? (
-                      <div className="flex flex-col gap-1.5 animate-in fade-in">
-                        <video
-                          src={TRIFLOW_VIDEO_URL}
-                          controls
-                          autoPlay
-                          playsInline
-                          className="w-full rounded-lg bg-black aspect-video object-contain"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setActiveVideoPreview(null)}
-                          className="text-[10px] text-rose-600 dark:text-rose-400 font-bold self-end hover:underline cursor-pointer"
-                        >
-                          Videoyu Kapat
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setActiveVideoPreview('triflow')}
-                        className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-200 text-xs font-bold border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors cursor-pointer"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Videoyu İzle / Önizle</span>
-                      </button>
+                    {isOpenPreview && (
+                      <video
+                        src={mod.url}
+                        controls
+                        autoPlay
+                        playsInline
+                        className="anim-fade mt-3 w-full rounded-[12px] bg-black aspect-video object-contain"
+                      />
                     )}
                   </div>
-                </div>
-              </div>
+                );
+              })}
+            </div>
+            {sectionFooter(
+              'Personel cihazı veya butonu tarif ettiğinde sistem bunu algılar ve konuşma balonunun altında videolu rehber sunar.'
+            )}
+          </div>
 
-              {/* SECTION: Anlık Özet & Klinik Anamnez Rehberi */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                    <FileText className="w-4 h-4" />
+          <div>
+            {sectionHeader('Anlık özet ve anamnez')}
+            <div className="group-list">
+              {anamnesisFeatures.map(([title, body]) => (
+                <div key={title} className="flex items-start gap-3 px-4 py-3">
+                  <CheckCircle2 className="w-5 h-5 text-sys-green shrink-0 mt-px" strokeWidth={2} />
+                  <div>
+                    <p className="text-[15px] font-medium tracking-[-0.014em] text-label">{title}</p>
+                    <p className="text-[13px] text-label-2 leading-snug mt-0.5">{body}</p>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                    Anlık Özet & Anamnez Modülü Nasıl Çalışır?
-                  </h4>
                 </div>
-                <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5 leading-relaxed pl-1">
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-teal-600 font-bold shrink-0">✓</span>
-                    <span><strong>Anında Analiz:</strong> Butona basıp beklemenize gerek kalmadan, konuşma devam ederken şikayetler, ilaçlar ve öyküler anlık olarak yan panele işlenir.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-teal-600 font-bold shrink-0">✓</span>
-                    <span><strong>Miligram Belirtilmese Bile İlaç Tespiti:</strong> Parol, Beloc, Novalgin vb. ilaçlar doz söylenmese bile temiz isimleriyle yakalanır.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-teal-600 font-bold shrink-0">✓</span>
-                    <span><strong>Akıllı Tekilleştirme:</strong> Hasta aynı alerjiyi veya hastalığı 5 defa söylese dahi tek ve temiz bir kayıt olarak listelenir.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-teal-600 font-bold shrink-0">✓</span>
-                    <span><strong>Olumsuzluk Filtresi:</strong> "Alerjim yok", "Ameliyat olmadım" gibi yokluk bildirimleri veya sorular yanlışlıkla sisteme kaydedilmez.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-teal-600 font-bold shrink-0">✓</span>
-                    <span><strong>HBYS Formatında Kopyalama:</strong> Panelin üstündeki "HBYS Formatında Kopyala" butonuyla tüm anamnez tek tıkla hastane kayıt sistemine aktarılabilir.</span>
-                  </li>
-                </ul>
-              </div>
+              ))}
+            </div>
+          </div>
 
-              {/* SECTION: Geniş Ekran / Tablet Yatay Modu */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300">
-                    <Monitor className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                    Geniş Ekran & Tablet Yatay Modu
-                  </h4>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Tablet ekranı yatay çevrildiğinde veya geniş bilgisayar monitörlerinde Canlı Konuşma ile Anlık Anamnez pencereleri <strong>eşzamanlı olarak yan yana</strong> açılır. Telefonlarda veya tablet dikey tutulduğunda ise parmağınızı sağa-sola kaydırarak (swipe) pencereler arasında zahmetsizce geçiş yapabilirsiniz.
-                </p>
-              </div>
-
-              {/* SECTION: Yazım Denetimi, İmla Düzeltme & Siber Güvenlik Kalkanı */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-teal-500/20 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                    İmla Düzeltme & Anti-Hack Güvenlik Kalkanı
-                  </h4>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Tüm konuşmalar harf uyumluluğu, soru eki ayrıştırması (mı/mi/musunuz) ve birleşik kelime ayrıştırması ("kan basıncı", "500 mg Parol") süzgecinden geçirilir. Sistem yapay zekayı kandırmaya, saptırmaya (prompt injection) veya rol dışına çıkarmaya yönelik kötü niyetli komutlara karşı tam korumalıdır.
-                </p>
-                <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                  🔒 Hasta-hemşire konuşmaları yalnızca bu cihazın yerel tarayıcı hafızasında saklanır; buluta sızdırılmaz.
+          <div>
+            {sectionHeader('Ekran düzeni')}
+            <div className="group-list">
+              <div className="flex items-start gap-3 px-4 py-3">
+                <span className="glyph w-[29px] h-[29px] bg-sys-gray mt-0.5">
+                  <Monitor className="w-4 h-4" strokeWidth={2.25} />
+                </span>
+                <p className="text-[14px] text-label-2 leading-relaxed">
+                  Tablet yatay çevrildiğinde veya geniş ekranlarda Canlı Konuşma ile Anlık Anamnez{' '}
+                  <span className="text-label font-medium">yan yana</span> açılır. Telefonda veya dikey tablette sağa-sola
+                  kaydırarak pencereler arasında geçiş yapabilirsiniz.
                 </p>
               </div>
             </div>
-          )}
+          </div>
 
+          <div>
+            {sectionHeader('Gizlilik ve güvenlik')}
+            <div className="group-list">
+              <div className="flex items-start gap-3 px-4 py-3">
+                <span className="glyph w-[29px] h-[29px] bg-sys-green mt-0.5">
+                  <ShieldCheck className="w-4 h-4" strokeWidth={2.25} />
+                </span>
+                <p className="text-[14px] text-label-2 leading-relaxed">
+                  Konuşmalar harf uyumu, soru eki ayrıştırması (mı/mi/musunuz) ve birleşik kelime ayrıştırması ("kan
+                  basıncı", "500 mg Parol") süzgecinden geçirilir. Sistem yapay zekayı saptırmaya yönelik (prompt
+                  injection) komutlara karşı korumalıdır.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 px-4 py-3">
+                <span className="glyph w-[29px] h-[29px] bg-accent">
+                  <Lock className="w-4 h-4" strokeWidth={2.25} />
+                </span>
+                <p className="text-[14px] text-label-2 leading-snug">
+                  Konuşmalar yalnızca bu cihazın yerel tarayıcı hafızasında saklanır; buluta gönderilmez.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-
-        {/* Footer */}
-        <div className="px-5 sm:px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 text-[11px] text-slate-400">
-          <span>İki Yönlü Canlı Çevirmen v2.2</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white text-xs transition-colors cursor-pointer shadow-xs"
-          >
-            Tamam
-          </button>
-        </div>
-
-      </div>
-    </div>
+      )}
+    </Sheet>
   );
 };

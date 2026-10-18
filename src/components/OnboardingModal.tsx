@@ -1,23 +1,21 @@
-import { useState, useEffect, useCallback, type FC } from 'react';
+import { useState, useEffect, useCallback, type FC, type ReactNode } from 'react';
 import {
   Globe,
   Mic,
-  ChevronRight,
   ChevronLeft,
   X,
-  Sparkles,
-  CheckCircle2,
   RefreshCw,
   Languages,
   Volume2,
-  Search,
-  FileText,
-  SlidersHorizontal,
+  Plus,
+  ClipboardList,
   Video,
   ShieldCheck,
   Smartphone,
   Monitor,
   Play,
+  Check,
+  ArrowRight,
 } from 'lucide-react';
 import { CountryFlag } from './CountryFlag';
 import { NURSE_CALL_VIDEO_URL, TRIFLOW_VIDEO_URL } from '../utils/medicalTutorialDetection';
@@ -27,337 +25,298 @@ interface OnboardingModalProps {
   onClose: () => void;
 }
 
+interface Step {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  bulletPoints: string[];
+  icon: ReactNode;
+  glyph: string;
+  renderVisual: () => ReactNode;
+}
+
+/** Neutral stage that hosts each step's illustrative preview. */
+const Stage: FC<{ children: ReactNode; className?: string }> = ({ children, className = '' }) => (
+  <div className={`w-full rounded-[18px] bg-surface-2 p-4 text-left ${className}`}>{children}</div>
+);
+
+const Chip: FC<{ active?: boolean; children: ReactNode }> = ({ active, children }) => (
+  <span
+    className={`h-8 pl-2 pr-3 rounded-full inline-flex items-center gap-2 text-[13px] shrink-0 ${
+      active ? 'bg-label text-bg font-semibold' : 'bg-surface text-label font-medium shadow-card'
+    }`}
+  >
+    {children}
+  </span>
+);
+
 export const OnboardingModal: FC<OnboardingModalProps> = ({ isOpen, onClose }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [playingVideo, setPlayingVideo] = useState<'nurse_call' | 'triflow' | null>(null);
 
-  const steps = [
+  const steps: Step[] = [
     {
       id: 'step_language_selection',
-      badge: 'Adım 1 / 7',
       title: 'Dil Seçimi & +100 Dünya Dili',
       subtitle: 'Hastanın konuştuğu dili tek dokunuşla belirleyin',
       description:
-        'Ekranın en üstünde yer alan hızlı dil çubuğundan hastanızın konuştuğu dili anında seçebilirsiniz. Aradığınız dil ilk listede yoksa "+ Tüm Diller" butonuna dokunarak 100’den fazla dünya dili ve lehçesi arasında hızlı arama yapabilirsiniz.',
+        'Ekranın üstündeki hızlı dil çubuğundan hastanızın konuştuğu dili anında seçebilirsiniz. Aradığınız dil listede yoksa "Tüm Diller"e dokunarak 100’den fazla dünya dili ve lehçesi arasında arama yapabilirsiniz.',
       bulletPoints: [
-        'Üst kısımdaki akıcı dil çubuğundan tek tıkla dil seçimi',
+        'Üst kısımdaki dil çubuğundan tek dokunuşla dil seçimi',
         '+100 dünya dili için kapsamlı arama ve ülke bayrakları',
-        'Seçilen dil hafızaya alınır ve sonraki oturumlarda otomatik hatırlanır',
+        'Seçilen dil hafızaya alınır ve sonraki oturumlarda hatırlanır',
       ],
+      icon: <Globe className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-accent',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col gap-2.5">
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
-            <span className="flex items-center gap-1.5">
-              <Globe className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              <span>Üst Dil Seçim Çubuğu</span>
-            </span>
-            <span className="text-[10px] text-teal-700 dark:text-teal-300 font-medium bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-full border border-teal-200 dark:border-teal-800">
-              Tek Tıkla Seç
-            </span>
-          </div>
-          <div className="flex items-center gap-2 overflow-x-auto py-1 px-1.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-            <div className="px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-600 text-white shadow-sm flex items-center gap-2 shrink-0">
+        <Stage>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Chip active>
               <CountryFlag flag="🇬🇧" code="en" country="İngiltere" size="xs" />
-              <span>İngilizce</span>
-            </div>
-            <div className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shrink-0 opacity-80">
+              İngilizce
+            </Chip>
+            <Chip>
               <CountryFlag flag="🇩🇪" code="de" country="Almanya" size="xs" />
-              <span>Almanca</span>
-            </div>
-            <div className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shrink-0 opacity-80">
+              Almanca
+            </Chip>
+            <Chip>
               <CountryFlag flag="🇷🇺" code="ru" country="Rusya" size="xs" />
-              <span>Rusça</span>
-            </div>
-            <div className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1.5 shrink-0 opacity-80">
-              <CountryFlag flag="🇸🇦" code="sa" country="Suudi Arabistan" size="xs" />
-              <span>Arapça</span>
-            </div>
-            <div className="px-2.5 py-1 rounded-lg text-xs font-medium border border-dashed border-teal-500/40 text-teal-700 dark:text-teal-300 flex items-center gap-1 shrink-0">
-              <Search className="w-3 h-3" />
-              <span>+ Tüm Diller</span>
-            </div>
+              Rusça
+            </Chip>
+            <span className="h-8 px-3 rounded-full inline-flex items-center gap-1 text-[13px] font-medium bg-accent-soft text-accent-ink shrink-0">
+              <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+              Tüm Diller
+            </span>
           </div>
-        </div>
+        </Stage>
       ),
     },
     {
       id: 'step_start_session',
-      badge: 'Adım 2 / 7',
-      title: 'Canlı İki Yönlü Tercüme & Rol Ayrımı',
-      subtitle: 'Merkezi Başlat butonuyla yapay zeka tercümanı hemen başlatın',
+      title: 'Canlı İki Yönlü Tercüme',
+      subtitle: 'Mikrofon butonuyla tercümanı hemen başlatın',
       description:
-        'Ekranın ortasındaki büyük "Başlat" butonuna dokunduğunuzda canlı ses hattı açılır. Siz Türkçe konuştuğunuzda sistem bunu hastanın diline çevirip seslendirir; hasta konuştuğunda ise Türkçe olarak size seslendirir.',
+        'Ekranın ortasındaki mavi mikrofon butonuna dokunduğunuzda canlı ses hattı açılır. Siz Türkçe konuştuğunuzda sistem bunu hastanın diline çevirip seslendirir; hasta konuştuğunda ise size Türkçe seslendirir.',
       bulletPoints: [
-        'Büyük Başlat butonu ile anında canlı tercüme bağlantısı',
-        'Türkçe konuşan her zaman hemşire/personel, yabancı dilde konuşan her zaman hasta olarak ayrıştırılır',
-        'Doğal, empatik ve insansı yapay zeka ses tonlamasıyla konuşmalar anında seslendirilir',
+        'Tek dokunuşla anında canlı tercüme bağlantısı',
+        'Türkçe konuşan her zaman personel, yabancı dilde konuşan her zaman hasta olarak ayrıştırılır',
+        'Doğal ve empatik yapay zeka ses tonlamasıyla anında seslendirme',
       ],
+      icon: <Mic className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-sys-green',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center gap-2.5">
-          <div className="w-16 h-16 rounded-full bg-teal-600 hover:bg-teal-700 text-white flex flex-col items-center justify-center shadow-md ring-4 ring-teal-500/20">
-            <Mic className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-bold uppercase tracking-wider">Başlat</span>
-          </div>
-          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Dokunun ve doğrudan konuşmaya başlayın
+        <Stage className="flex flex-col items-center gap-3 py-6">
+          <span className="relative flex items-center justify-center">
+            <span className="absolute -inset-2 rounded-full bg-accent/25 anim-breathe" />
+            <span className="mic-hero relative w-16 h-16 rounded-full text-white flex items-center justify-center">
+              <Mic className="w-7 h-7" strokeWidth={2} />
+            </span>
           </span>
-        </div>
+          <span className="text-[13px] font-medium text-label-2">Dokunun ve konuşmaya başlayın</span>
+        </Stage>
       ),
     },
     {
       id: 'step_quick_language_switch',
-      badge: 'Adım 3 / 7',
-      title: 'Konuşma Sırasında Kesintisiz Dil Değişimi',
-      subtitle: 'Görüşmeyi durdurmadan veya baştan başlatmadan anında dil değiştirin',
+      title: 'Kesintisiz Dil Değişimi',
+      subtitle: 'Görüşmeyi durdurmadan anında dil değiştirin',
       description:
-        'Görüşme esnasında hastanın farklı bir dil konuştuğunu fark ederseniz ya da hasta yakını başka bir dilde devreye girerse, oturumu kapatmanıza gerek yoktur. Üst dil çubuğundan yeni dile dokunduğunuz anda sistem görüşmeyi kesmeden yeni dille çeviriye devam eder.',
+        'Görüşme esnasında hastanın farklı bir dil konuştuğunu fark ederseniz ya da hasta yakını başka bir dilde devreye girerse oturumu kapatmanıza gerek yoktur. Üst çubuktan yeni dile dokunduğunuz anda sistem görüşmeyi kesmeden çeviriye devam eder.',
       bulletPoints: [
-        'Konuşmayı durdurmadan veya oturumu baştan başlatmadan kesintisiz geçiş',
-        'Tek tıkla yeni dil seçildiğinde sistem anında yeni dile uyum sağlar',
-        'Diyalog akışı ve kayıtlar korunarak tercüme akışı devam eder',
+        'Konuşmayı durdurmadan veya oturumu yeniden başlatmadan geçiş',
+        'Yeni dil seçildiğinde sistem anında uyum sağlar',
+        'Diyalog akışı ve kayıtlar korunur',
       ],
+      icon: <RefreshCw className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-sys-orange',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
-            <span className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Canlı Oturum Sırasında Dil Değişimi</span>
-            </span>
-            <span className="text-[10px] text-teal-700 dark:text-teal-300 font-semibold bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-full border border-teal-200 dark:border-teal-800">
-              Kesintisiz
-            </span>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">Önceki:</span>
-              <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                <CountryFlag flag="🇬🇧" code="en" country="İngiltere" size="xs" />
-                İngilizce
-              </span>
-              <span className="text-teal-600 font-bold">➔</span>
-              <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-teal-600 text-white flex items-center gap-1">
-                <CountryFlag flag="🇸🇦" code="sa" country="Suudi Arabistan" size="xs" />
-                Arapça
-              </span>
-            </div>
-            <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400">
-              Anında Aktif
-            </span>
-          </div>
-        </div>
+        <Stage className="flex items-center justify-center gap-3">
+          <Chip>
+            <CountryFlag flag="🇬🇧" code="en" country="İngiltere" size="xs" />
+            İngilizce
+          </Chip>
+          <ArrowRight className="w-4 h-4 text-label-3 shrink-0" strokeWidth={2.5} />
+          <Chip active>
+            <CountryFlag flag="🇸🇦" code="sa" country="Suudi Arabistan" size="xs" />
+            Arapça
+          </Chip>
+        </Stage>
       ),
     },
     {
       id: 'step_realtime_anamnesis',
-      badge: 'Adım 4 / 7',
-      title: 'Anlık Yapay Zeka Anamnez & Klinik Özet',
-      subtitle: 'Konuşulan tüm tıbbi bilgiler anında kategorize edilir',
+      title: 'Anlık Anamnez & Klinik Özet',
+      subtitle: 'Konuşulan tıbbi bilgiler anında kategorize edilir',
       description:
-        'Yapay zeka siz konuşurken görüşmeyi derinlemesine analiz eder. Hastanın şikayetleri, kullandığı ilaçlar, doğrulanmış alerjileri, kronik hastalıkları, geçirdiği ameliyatlar, alışkanlıkları ve talepleri anında "Anlık Özet & Anamnez" penceresine işlenir.',
+        'Yapay zeka siz konuşurken görüşmeyi analiz eder. Hastanın şikayetleri, ilaçları, alerjileri, kronik hastalıkları, ameliyatları, alışkanlıkları ve talepleri anında "Özet & Anamnez" penceresine işlenir.',
       bulletPoints: [
-        'Konuşma bittikten sonra değil, konuşurken ANLIK olarak işlenir',
-        'Kıdemli hekim/hemşire mantığıyla gereksiz sorular veya olumsuzluklar ("alerjim yok" vb.) elenir',
-        'Tekrarlanan bilgiler tekilleştirilir, temiz ve net bir klinik tablo sunulur',
+        'Konuşma bittikten sonra değil, konuşurken anlık olarak işlenir',
+        'Gereksiz sorular veya olumsuzluklar ("alerjim yok" vb.) elenir',
+        'Tekrarlanan bilgiler tekilleştirilir, net bir klinik tablo sunulur',
       ],
+      icon: <ClipboardList className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-sys-indigo',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-          <div className="flex items-center justify-between text-[11px] font-bold text-teal-700 dark:text-teal-300">
-            <span className="flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              <span>Anlık Klinik Anamnez Paneli</span>
-            </span>
-            <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold">
-              Canlı Ayrıştırma
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] font-bold text-rose-600 block mb-0.5">Şikayetler:</span>
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Göğüs ağrısı, Nefes darlığı</p>
+        <Stage className="grid grid-cols-2 gap-2">
+          {[
+            ['Şikayetler', 'Göğüs ağrısı, nefes darlığı', 'bg-sys-pink'],
+            ['İlaçlar', 'Parol 500 mg, Beloc', 'bg-sys-green'],
+            ['Kronik Hastalık', 'Tip 2 diyabet', 'bg-sys-purple'],
+            ['Alerjiler', 'Penisilin', 'bg-sys-red'],
+          ].map(([label, value, dot]) => (
+            <div key={label} className="rounded-[12px] bg-surface shadow-card px-3 py-2.5">
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-label-2 mb-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+                {label}
+              </span>
+              <p className="text-[13px] font-medium text-label leading-snug">{value}</p>
             </div>
-            <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] font-bold text-emerald-600 block mb-0.5">İlaçlar:</span>
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Parol 500 mg, Beloc</p>
-            </div>
-            <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] font-bold text-purple-600 block mb-0.5">Kronik Hastalık:</span>
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Tip 2 Diyabet, Hipertansiyon</p>
-            </div>
-            <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] font-bold text-pink-600 block mb-0.5">Alerjiler:</span>
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Penisilin Alerjisi</p>
-            </div>
-          </div>
-        </div>
+          ))}
+        </Stage>
       ),
     },
     {
       id: 'step_dual_pane_responsive',
-      badge: 'Adım 5 / 7',
-      title: 'Çift Pencere & Geniş Ekran / Tablet Yatay Modu',
-      subtitle: 'Mobilde kaydırma hareketi, tablet ve bilgisayarda eşzamanlı yan yana görünüm',
+      title: 'Çift Pencere & Geniş Ekran',
+      subtitle: 'Telefonda kaydırma, tablet ve bilgisayarda yan yana görünüm',
       description:
-        'Uygulama ekran boyutunuza ve cihaz yönünüze göre akıllıca uyarlanır. Akıllı telefon veya dikey tablette alt bölüm parmağınızı sağa/sola kaydırarak (swipe) değişir. Tablet yatay tutulduğunda veya bilgisayar ekranında ise Canlı Konuşma ile Anlık Anamnez EŞZAMANLI YAN YANA çalışır.',
+        'Uygulama ekran boyutunuza ve cihaz yönünüze göre uyarlanır. Telefonda veya dikey tablette alt bölüm parmağınızı sağa/sola kaydırarak değişir. Tablet yatay tutulduğunda veya bilgisayarda Canlı Konuşma ile Anlık Anamnez yan yana çalışır.',
       bulletPoints: [
-        'Mobil / Dikey Ekran: Parmağınızı sağa-sola kaydırarak Canlı Konuşma ve Anamnez arasında geçiş',
-        'Tablet Yatay / Bilgisayar Ekranı: İki pencere de aynı anda yan yana açık ve eşzamanlı canlı çalışır',
-        'Geniş ekranda bölünmüş görünüm ile hasta konuşurken bir yandan anamnez tablosu izlenebilir',
+        'Mobil / dikey ekran: kaydırarak Canlı Konuşma ve Anamnez arasında geçiş',
+        'Tablet yatay / bilgisayar: iki pencere aynı anda yan yana',
+        'Hasta konuşurken bir yandan anamnez tablosu izlenebilir',
       ],
+      icon: <Monitor className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-sys-gray',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
-            <span className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
-              <Monitor className="w-3.5 h-3.5" />
-              <span>Duyarlı Ekran Deneyimi</span>
-            </span>
-            <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
-              <Smartphone className="w-3 h-3" /> Mobil & <Monitor className="w-3 h-3" /> Geniş Ekran
+        <Stage className="flex items-end justify-center gap-5">
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="w-[52px] h-[92px] rounded-[12px] bg-surface shadow-card p-1.5 flex flex-col gap-1">
+              <span className="h-2 rounded-full bg-fill" />
+              <span className="flex-1 rounded-[6px] bg-accent-soft" />
+            </div>
+            <span className="text-[11px] text-label-2 inline-flex items-center gap-1">
+              <Smartphone className="w-3 h-3" /> Kaydır
             </span>
           </div>
-          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
-            <div className="flex-1 p-2 rounded-lg bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-center">
-              <span className="text-xs font-bold text-teal-800 dark:text-teal-300">Canlı Konuşma</span>
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="w-[150px] h-[92px] rounded-[12px] bg-surface shadow-card p-1.5 flex gap-1">
+              <span className="flex-1 rounded-[6px] bg-accent-soft" />
+              <span className="flex-1 rounded-[6px] bg-sys-indigo/15" />
             </div>
-            <div className="text-teal-600 font-bold text-xs shrink-0">+</div>
-            <div className="flex-1 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-center">
-              <span className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Anlık Anamnez</span>
-            </div>
+            <span className="text-[11px] text-label-2 inline-flex items-center gap-1">
+              <Monitor className="w-3 h-3" /> Yan yana
+            </span>
           </div>
-        </div>
+        </Stage>
       ),
     },
     {
       id: 'step_medical_tutorials',
-      badge: 'Adım 6 / 7',
-      title: 'İnteraktif Videolu Tıbbi Eğitimler',
-      subtitle: 'Hemşire çağrı zili ve cihaz kullanımı anlatıldığında hastaya videolu rehber',
+      title: 'Videolu Tıbbi Eğitimler',
+      subtitle: 'Çağrı zili ve cihaz kullanımında hastaya videolu rehber',
       description:
-        'Sağlık personeli hastaya Hemşire Çağrı Butonunu veya Triflow Solunum Cihazını nasıl kullanacağını anlattığında, yapay zeka bunu anında algılar ve konuşma balonunun altında hastanın dilinde açıklamalı interaktif video kartı sunar.',
+        'Sağlık personeli hastaya Hemşire Çağrı Butonunu veya Triflow Solunum Cihazını nasıl kullanacağını anlattığında yapay zeka bunu algılar ve konuşma balonunun altında video kartı sunar.',
       bulletPoints: [
-        'Hemşire Çağrı Zili anlatıldığında hastaya doğru buton kullanım videosu gösterilir',
-        'Triflow solunum egzersiz cihazı anlatıldığında doğru nefes alma tekniği videosu açılır',
-        'Videolar sessiz oynatılır, hastanın görsel olarak cihazı doğru anlamasını sağlar',
+        'Hemşire çağrı zili anlatıldığında doğru buton kullanım videosu',
+        'Triflow anlatıldığında doğru nefes alma tekniği videosu',
+        'Videolar sessiz oynatılır, cihaz görsel olarak kolayca anlaşılır',
       ],
+      icon: <Video className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-sys-red',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col gap-2.5">
-          <div className="flex items-center justify-between text-[11px] font-bold text-teal-700 dark:text-teal-300">
-            <span className="flex items-center gap-1.5">
-              <Video className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              <span>Otomatik Algılanan Video Kartları</span>
-            </span>
-            <span className="text-[10px] bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 px-2 py-0.5 rounded-full font-bold border border-teal-200 dark:border-teal-800">
-              Görsel Rehberlik
-            </span>
-          </div>
-
-          {/* Active video player if open */}
+        <Stage className="flex flex-col gap-2.5">
           {playingVideo && (
-            <div className="flex flex-col gap-1.5 bg-black rounded-xl p-1 overflow-hidden animate-in fade-in">
+            <div className="flex flex-col gap-1.5 anim-fade">
               <video
                 src={playingVideo === 'nurse_call' ? NURSE_CALL_VIDEO_URL : TRIFLOW_VIDEO_URL}
                 controls
                 autoPlay
                 playsInline
-                className="w-full aspect-video object-contain rounded-lg"
+                className="w-full aspect-video object-contain rounded-[12px] bg-black"
               />
-              <button
-                type="button"
-                onClick={() => setPlayingVideo(null)}
-                className="text-[10px] text-white/80 hover:text-white self-end px-2 py-0.5 font-bold cursor-pointer"
-              >
-                Kapat ✕
-              </button>
             </div>
           )}
-
-          {/* Video List Buttons */}
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setPlayingVideo(playingVideo === 'nurse_call' ? null : 'nurse_call')}
-              className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                playingVideo === 'nurse_call'
-                  ? 'bg-teal-50 dark:bg-teal-950/60 border-teal-500 ring-2 ring-teal-400/30'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-teal-400'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 mb-1 text-teal-700 dark:text-teal-300">
-                <Play className="w-3 h-3 fill-current shrink-0" />
-                <span className="text-[11px] font-bold leading-tight">Çağrı Butonu</span>
-              </div>
-              <p className="text-[9.5px] text-slate-500 dark:text-slate-400 line-clamp-2">
-                "Beni çağırmak için butona basın" dendiğinde açılır
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPlayingVideo(playingVideo === 'triflow' ? null : 'triflow')}
-              className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                playingVideo === 'triflow'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 ring-2 ring-indigo-400/30'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 mb-1 text-indigo-700 dark:text-indigo-300">
-                <Play className="w-3 h-3 fill-current shrink-0" />
-                <span className="text-[11px] font-bold leading-tight">Triflow Cihazı</span>
-              </div>
-              <p className="text-[9.5px] text-slate-500 dark:text-slate-400 line-clamp-2">
-                "Derin nefes çekerek topları kaldırın" dendiğinde açılır
-              </p>
-            </button>
+            {(
+              [
+                ['nurse_call', 'Çağrı Butonu', '"Beni çağırmak için butona basın"'],
+                ['triflow', 'Triflow Cihazı', '"Derin nefes çekerek topları kaldırın"'],
+              ] as const
+            ).map(([id, label, hint]) => {
+              const active = playingVideo === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPlayingVideo(active ? null : id)}
+                  className={`pressable rounded-[12px] p-3 text-left cursor-pointer ${
+                    active ? 'bg-accent text-white' : 'bg-surface shadow-card'
+                  }`}
+                >
+                  <span
+                    className={`flex items-center gap-1.5 text-[13px] font-semibold mb-0.5 ${
+                      active ? 'text-white' : 'text-accent-ink'
+                    }`}
+                  >
+                    {active ? <X className="w-3.5 h-3.5" strokeWidth={2.5} /> : <Play className="w-3 h-3 fill-current" />}
+                    {label}
+                  </span>
+                  <span className={`block text-[11px] leading-snug ${active ? 'text-white/80' : 'text-label-2'}`}>
+                    {hint}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </Stage>
       ),
     },
     {
       id: 'step_translate_and_audio',
-      badge: 'Adım 7 / 7',
-      title: 'Yazılı Çeviri, Sesli Dinleme & Güvenlik Kalkanı',
-      subtitle: 'Her cümlenin yazılı çevirisi, sesli tekrarı ve anti-manipülasyon koruması',
+      title: 'Yazılı Çeviri & Sesli Dinleme',
+      subtitle: 'Her cümle için yazılı çeviri, sesli tekrar ve güvenlik',
       description:
-        'Konuşma baloncuklarındaki "Çevir" butonuyla yazılı çeviriye ulaşabilir, "Hoparlör" simgesiyle cümlenin sesli okunuşunu dilediğiniz kadar dinleyebilirsiniz. Sistem harf ve kelime ayrıştırmasıyla hatasız yazım sunar ve kötüye kullanımlara karşı korumalıdır.',
+        'Konuşma kartlarındaki "Çevir" butonuyla yazılı çeviriye ulaşabilir, hoparlör simgesiyle cümlenin sesli okunuşunu dilediğiniz kadar dinleyebilirsiniz. Sistem hatasız yazım sunar ve kötüye kullanıma karşı korumalıdır.',
       bulletPoints: [
-        'Her baloncuğun sağ üstünde bağımsız Çevir ve Dinle butonları',
-        'Kelimelerin birbirine yapışması engellenmiş, mükemmel Türkçe ve yabancı dil imlası',
-        'Kötü niyetli komutlara ve yapay zekayı saptırma girişimlerine karşı tam güvenlik kalkanı',
+        'Her kartın sağ üstünde bağımsız Dinle ve Çevir butonları',
+        'Kelimelerin birbirine yapışması engellenmiş, düzgün imla',
+        'Yapay zekayı saptırma girişimlerine karşı güvenlik kalkanı',
       ],
+      icon: <Languages className="w-7 h-7" strokeWidth={2} />,
+      glyph: 'bg-sys-teal',
       renderVisual: () => (
-        <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase">
-                Hemşire (Türkçe)
+        <Stage className="flex flex-col gap-2.5">
+          <div className="rounded-[14px] bg-surface shadow-card p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[12px] font-semibold text-label-2">Hemşire · Türkçe</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center">
+                  <Volume2 className="w-3.5 h-3.5 text-label" strokeWidth={2} />
+                </span>
+                <span className="h-7 px-2.5 rounded-full bg-surface-2 text-accent-ink text-[12px] font-medium inline-flex items-center gap-1">
+                  <Languages className="w-3 h-3" strokeWidth={2.25} />
+                  Çevir
+                </span>
               </span>
-              <div className="flex items-center gap-1.5">
-                <div className="p-1 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                  <Volume2 className="w-3.5 h-3.5" />
-                </div>
-                <div className="px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 flex items-center gap-1">
-                  <Languages className="w-3 h-3 text-teal-600" />
-                  <span>Çevir</span>
-                </div>
-              </div>
             </div>
-            <p className="text-xs text-slate-800 dark:text-slate-200 font-medium">
-              "Tansiyonunuzu ölçeceğim, lütfen kolunuzu uzatın."
+            <p className="text-[14px] text-label leading-snug">Tansiyonunuzu ölçeceğim, lütfen kolunuzu uzatın.</p>
+            <p className="mt-2 pt-2 hairline-t text-[13px] font-medium text-accent-ink leading-snug">
+              I will check your blood pressure, please extend your arm.
             </p>
-            <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/50 text-xs text-teal-900 dark:text-teal-100">
-              <span className="text-[10px] font-bold block text-teal-700 dark:text-teal-400">ÇEVİRİ:</span>
-              "I will check your blood pressure, please extend your arm."
-            </div>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-[11px] font-medium border border-emerald-200 dark:border-emerald-800">
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            <span>Klinik Veri Güvenliği ve Hasta Mahremiyeti Koruması Aktif</span>
-          </div>
-        </div>
+          <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-sys-green">
+            <ShieldCheck className="w-3.5 h-3.5" strokeWidth={2.25} />
+            Klinik veri güvenliği ve hasta mahremiyeti koruması aktif
+          </span>
+        </Stage>
       ),
     },
   ];
 
   const current = steps[currentStep];
+  const isLast = currentStep === steps.length - 1;
 
   const handleFinish = useCallback(() => {
     try {
@@ -387,112 +346,95 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ isOpen, onClose }) =
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"
     >
-      <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] shadow-2xl border border-slate-200 dark:border-slate-800">
-        {/* Modal Header */}
-        <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
-          <div className="inline-flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-              {current.badge}
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Hızlı Kullanım Kılavuzu</span>
-          </div>
+      <div aria-hidden="true" className="absolute inset-0 bg-black/30 dark:bg-black/60 backdrop-blur-[2px] anim-fade" />
 
+      <div className="sheet relative w-full sm:max-w-lg flex flex-col overflow-hidden rounded-t-[20px] sm:rounded-[26px] shadow-float max-h-[94dvh] sm:max-h-[88vh] pb-safe sm:pb-0">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-4 sm:px-5 pt-3 sm:pt-4 shrink-0">
+          {currentStep > 0 ? (
+            <button
+              type="button"
+              onClick={() => setCurrentStep((prev) => prev - 1)}
+              className="pressable h-[30px] pl-1 pr-3 rounded-full text-accent text-[15px] inline-flex items-center gap-0.5 cursor-pointer hover:bg-fill-2"
+            >
+              <ChevronLeft className="w-5 h-5" strokeWidth={2.5} />
+              Geri
+            </button>
+          ) : (
+            <span className="text-[13px] font-medium text-label-2 pl-1">Hızlı Kullanım Kılavuzu</span>
+          )}
           <button
             type="button"
             onClick={handleFinish}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className="pressable w-[30px] h-[30px] rounded-full bg-fill text-label-2 hover:text-label flex items-center justify-center cursor-pointer"
             title="Kılavuzu Kapat"
             aria-label="Kapat"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" strokeWidth={2.5} />
           </button>
         </div>
 
-        {/* Body Content */}
-        <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-3.5">
-          <div>
-            <h2 id="onboarding-title" className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {current.title}
-            </h2>
-            <p className="text-xs sm:text-sm text-teal-700 dark:text-teal-400 font-medium mt-0.5">
-              {current.subtitle}
-            </p>
-          </div>
+        {/* Body */}
+        <div key={current.id} className="modal-body px-6 sm:px-9 pt-4 pb-4 overflow-y-auto flex-1 flex flex-col items-center text-center anim-rise">
+          <span className={`glyph w-[60px] h-[60px] rounded-[16px] ${current.glyph} shadow-[0_8px_20px_-8px_rgba(0,0,0,0.35)]`}>
+            {current.icon}
+          </span>
 
-          {/* Step Visual Preview Area */}
-          <div className="my-1">{current.renderVisual()}</div>
-
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-            {current.description}
+          <p className="mt-4 text-[13px] font-medium text-label-2 tabular">
+            Adım {currentStep + 1} / {steps.length}
           </p>
+          <h2
+            id="onboarding-title"
+            className="mt-1 text-[26px] sm:text-[28px] font-bold tracking-[-0.03em] leading-[1.15] text-label"
+          >
+            {current.title}
+          </h2>
+          <p className="mt-2 text-[15px] sm:text-[16px] text-label-2 leading-snug max-w-sm">{current.subtitle}</p>
 
-          <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+          <div className="w-full mt-6">{current.renderVisual()}</div>
+
+          <p className="mt-5 text-[15px] text-label-2 leading-relaxed text-left w-full">{current.description}</p>
+
+          <ul className="mt-4 w-full space-y-2.5 text-left">
             {current.bulletPoints.map((point) => (
-              <div key={point} className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+              <li key={point} className="flex items-start gap-2.5 text-[15px] text-label leading-snug">
+                <span className="mt-0.5 w-5 h-5 rounded-full bg-accent-soft text-accent flex items-center justify-center shrink-0">
+                  <Check className="w-3 h-3" strokeWidth={3} />
+                </span>
                 <span>{point}</span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
 
-        {/* Modal Footer Controls */}
-        <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
-          {/* Step Dot Indicators */}
-          <div className="flex items-center gap-1.5">
+        {/* Footer */}
+        <div className="px-6 sm:px-9 pt-3 pb-5 shrink-0 flex flex-col items-center gap-4">
+          <button
+            type="button"
+            onClick={isLast ? handleFinish : () => setCurrentStep((prev) => prev + 1)}
+            className="pressable btn-primary w-full h-[50px] rounded-[14px] text-[17px] font-semibold tracking-[-0.022em] cursor-pointer"
+          >
+            {isLast ? 'Başlayın' : 'Devam'}
+          </button>
+
+          <div className="flex items-center gap-2">
             {steps.map((step, idx) => (
               <button
                 type="button"
                 key={step.id}
                 onClick={() => setCurrentStep(idx)}
-                className={`h-2 rounded-full transition-all duration-200 cursor-pointer ${
-                  currentStep === idx
-                    ? 'w-5 sm:w-6 bg-teal-600 dark:bg-teal-400'
-                    : 'w-1.5 sm:w-2 bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
+                className={`h-[7px] rounded-full transition-all duration-300 cursor-pointer ${
+                  currentStep === idx ? 'w-[22px] bg-label' : 'w-[7px] bg-label-3/50 hover:bg-label-3'
                 }`}
                 title={`Adım ${idx + 1}`}
                 aria-label={`Adım ${idx + 1}`}
               />
             ))}
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2">
-            {currentStep > 0 && (
-              <button
-                type="button"
-                onClick={() => setCurrentStep((prev) => prev - 1)}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 cursor-pointer flex items-center gap-1 active:scale-95 transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Geri</span>
-              </button>
-            )}
-
-            {currentStep < steps.length - 1 ? (
-              <button
-                type="button"
-                onClick={() => setCurrentStep((prev) => prev + 1)}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-              >
-                <span>Sonraki</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleFinish}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-              >
-                <span>Kılavuzu Tamamla</span>
-                <Sparkles className="w-4 h-4" />
-              </button>
-            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,5 @@
 import { useState, type FC } from 'react';
 import {
-  FileText,
   Pill,
   AlertTriangle,
   HeartPulse,
@@ -11,7 +10,8 @@ import {
   Stethoscope,
   Copy,
   Check,
-  Sparkles,
+  Activity,
+  ClipboardList,
 } from 'lucide-react';
 import type { LiveAnamnesisState } from '../types/interpreter';
 
@@ -111,27 +111,41 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
     }
   };
 
+  const sections: {
+    key: string;
+    title: string;
+    items: string[];
+    icon: typeof Pill;
+    glyph: string;
+    wide?: boolean;
+    critical?: boolean;
+  }[] = [
+    { key: 'complaints', title: 'Aktif Şikayetler & Belirtiler', items: anamnesis.chiefComplaints, icon: Activity, glyph: 'bg-sys-pink', wide: true },
+    { key: 'allergies', title: 'Alerjiler', items: anamnesis.allergies, icon: AlertTriangle, glyph: 'bg-sys-red', critical: true },
+    { key: 'medications', title: 'Kullanılan İlaçlar', items: anamnesis.medications, icon: Pill, glyph: 'bg-sys-green' },
+    { key: 'chronic', title: 'Kronik Hastalıklar', items: anamnesis.chronicDiseases, icon: HeartPulse, glyph: 'bg-sys-purple' },
+    { key: 'surgeries', title: 'Geçirilmiş Operasyonlar', items: anamnesis.pastSurgeries, icon: Scissors, glyph: 'bg-sys-teal' },
+    { key: 'habits', title: 'Alışkanlıklar & Yaşam Tarzı', items: anamnesis.habits, icon: Cigarette, glyph: 'bg-sys-gray' },
+    { key: 'family', title: 'Aile Öyküsü', items: anamnesis.familyHistory, icon: Users, glyph: 'bg-sys-indigo' },
+    { key: 'needs', title: 'Hastanın İstek & İhtiyaçları', items: anamnesis.patientNeedsAndRequests, icon: HandHeart, glyph: 'bg-sys-orange', wide: true },
+    { key: 'instructions', title: 'Hemşirelik Notu & Talimatlar', items: anamnesis.clinicalInstructions, icon: Stethoscope, glyph: 'bg-accent', wide: true },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto px-3 sm:px-5 md:px-6 py-3.5 space-y-3.5 animate-in fade-in duration-200">
-      {/* Real-time Status Header */}
-      <div className="flex items-center justify-between gap-2 p-3 rounded-2xl liquid-glass-panel border border-teal-500/30 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-teal-500" />
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-5 md:px-6 py-3 md:py-5 gap-3 md:gap-4">
+      {/* Live status header */}
+      <div className="flex items-center justify-between gap-3 px-1 shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sys-green opacity-60" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-sys-green" />
           </span>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                Anlık Klinik Anamnez
-              </h3>
-              <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                {totalItems} Bilgi Yakalandı
-              </span>
-            </div>
-            <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
-              Konuşma esnasında otomatik ayrıştırılıp anında kaydedilir
-            </p>
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-semibold tracking-[-0.016em] text-label truncate">
+              Anlık Klinik Anamnez
+              <span className="ml-1.5 font-normal text-label-2 tabular">{totalItems} bilgi</span>
+            </h3>
+            <p className="text-[12px] text-label-2 truncate">Konuşma sırasında otomatik ayrıştırılır</p>
           </div>
         </div>
 
@@ -139,283 +153,73 @@ export const LiveAnamnesisPanel: FC<LiveAnamnesisPanelProps> = ({
           <button
             type="button"
             onClick={handleCopyAnamnesis}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold liquid-glass-btn text-teal-700 dark:text-teal-300 hover:text-teal-900 dark:hover:text-teal-100 transition-all cursor-pointer shadow-xs active:scale-95"
+            className={`pressable h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer shrink-0 ${
+              copied ? 'bg-sys-green/15 text-sys-green' : 'btn-tinted'
+            }`}
             title="Tüm Anamnez Raporunu Kopyala"
           >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-emerald-700 dark:text-emerald-300 text-[11px]">Kopyalandı</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span className="text-[11px]">Kopyala</span>
-              </>
-            )}
+            {copied ? <Check className="w-3.5 h-3.5" strokeWidth={2.5} /> : <Copy className="w-3.5 h-3.5" strokeWidth={2} />}
+            <span>{copied ? 'Kopyalandı' : 'Kopyala'}</span>
           </button>
         )}
       </div>
 
-      {/* Empty State */}
+      {/* Empty state */}
       {totalItems === 0 && (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500 select-none">
-          <div className="w-13 h-13 rounded-2xl liquid-glass-panel flex items-center justify-center mb-3 shadow-sm border border-white/60 dark:border-white/10">
-            <Sparkles className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-10 text-center select-none anim-fade">
+          <div className="w-14 h-14 rounded-full bg-sys-indigo/12 text-sys-indigo flex items-center justify-center mb-4">
+            <ClipboardList className="w-6 h-6" strokeWidth={2} />
           </div>
-          <p className="text-xs uppercase tracking-wider font-bold text-slate-800 dark:text-slate-200 mb-1">
-            Anamnez Bekleniyor
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm leading-relaxed">
-            Konuşmada şikayetler, istekler, kullanılan ilaçlar, alerjiler, kronik hastalıklar veya operasyonlar geçtikçe anlık olarak burada listelenecektir.
+          <p className="text-[17px] font-semibold tracking-[-0.022em] text-label mb-1">Anamnez Bekleniyor</p>
+          <p className="text-[14px] text-label-2 max-w-[300px] leading-relaxed">
+            Şikayetler, istekler, ilaçlar, alerjiler, kronik hastalıklar ve operasyonlar konuşmada geçtikçe burada
+            listelenir.
           </p>
         </div>
       )}
 
-      {/* Anamnesis Categories Grid (Spacious and Readable) */}
+      {/* Categories */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-2">
-        {/* 1. Kullandığı İlaçlar */}
-        {anamnesis.medications.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-emerald-500/25 dark:border-emerald-500/20 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-                <Pill className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Kullanılan İlaçlar
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-100/70 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                {anamnesis.medications.length}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {anamnesis.medications.map((med, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 shadow-2xs"
-                >
-                  <Pill className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>{med}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 2. Alerjiler */}
-        {anamnesis.allergies.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-rose-500/30 dark:border-rose-500/25 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-rose-950 dark:text-rose-200">
-                Alerjiler (Dikkat)
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300">
-                {anamnesis.allergies.length}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {anamnesis.allergies.map((allergy, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 shadow-2xs"
-                >
-                  <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400 shrink-0" />
-                  <span>{allergy}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 3. Kronik Hastalıklar */}
-        {anamnesis.chronicDiseases.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-purple-500/25 dark:border-purple-500/20 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
-                <HeartPulse className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Kronik Hastalıklar
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300">
-                {anamnesis.chronicDiseases.length}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {anamnesis.chronicDiseases.map((dis, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50/80 dark:bg-purple-950/50 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 shadow-2xs"
-                >
-                  <HeartPulse className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
-                  <span>{dis}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 4. Geçirilmiş Operasyonlar */}
-        {anamnesis.pastSurgeries.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-blue-500/25 dark:border-blue-500/20 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
-                <Scissors className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Geçirilmiş Operasyonlar
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300">
-                {anamnesis.pastSurgeries.length}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {anamnesis.pastSurgeries.map((surg, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50/80 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 shadow-2xs"
-                >
-                  <Scissors className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span>{surg}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 5. Alışkanlıklar & Yaşam Tarzı */}
-        {anamnesis.habits.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                <Cigarette className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Alışkanlıklar & Yaşam Tarzı
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300">
-                {anamnesis.habits.length}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {anamnesis.habits.map((h, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs"
-                >
-                  <Cigarette className="w-3 h-3 text-slate-500 shrink-0" />
-                  <span>{h}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 6. Aile Öyküsü */}
-        {anamnesis.familyHistory.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-indigo-500/25 dark:border-indigo-500/20 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                <Users className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Aile Öyküsü
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300">
-                {anamnesis.familyHistory.length}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {anamnesis.familyHistory.map((fam, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-2xs"
-                >
-                  <Users className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  <span>{fam}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 7. Hastanın İstek & Talepleri */}
-        {anamnesis.patientNeedsAndRequests.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-cyan-500/25 dark:border-cyan-500/20 shadow-xs flex flex-col justify-between md:col-span-2">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400">
-                <HandHeart className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Hastanın İstek & İhtiyaçları
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300">
-                {anamnesis.patientNeedsAndRequests.length}
-              </span>
-            </div>
-            <ul className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
-              {anamnesis.patientNeedsAndRequests.map((req, idx) => (
-                <li key={idx} className="flex items-start gap-1.5">
-                  <span className="text-cyan-600 dark:text-cyan-400 font-bold">•</span>
-                  <span>{req}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* 8. Hastanın Şikayetleri */}
-        {anamnesis.chiefComplaints.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-rose-500/20 dark:border-rose-500/15 shadow-xs flex flex-col justify-between md:col-span-2">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
-                <FileText className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Aktif Şikayetler & Belirtiler
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300">
-                {anamnesis.chiefComplaints.length}
-              </span>
-            </div>
-            <ul className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
-              {anamnesis.chiefComplaints.map((c, idx) => (
-                <li key={idx} className="flex items-start gap-1.5 bg-rose-50/40 dark:bg-rose-950/20 p-2 rounded-xl border border-rose-200/50 dark:border-rose-900/30">
-                  <span className="text-rose-500 font-bold">•</span>
-                  <span>{c}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* 9. Hemşirelik Notları & Direktifleri */}
-        {anamnesis.clinicalInstructions.length > 0 && (
-          <div className="p-3.5 rounded-2xl liquid-glass-panel border border-teal-500/25 dark:border-teal-500/20 shadow-xs flex flex-col justify-between md:col-span-2">
-            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400">
-                <Stethoscope className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                Hemşirelik Notu & Talimatlar
-              </h4>
-              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300">
-                {anamnesis.clinicalInstructions.length}
-              </span>
-            </div>
-            <ul className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
-              {anamnesis.clinicalInstructions.map((ins, idx) => (
-                <li key={idx} className="flex items-start gap-1.5">
-                  <span className="text-teal-600 dark:text-teal-400 font-bold">•</span>
-                  <span>{ins}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {sections
+          .filter((s) => s.items.length > 0)
+          .map((section) => {
+            const Icon = section.icon;
+            return (
+              <section
+                key={section.key}
+                className={`anim-rise rounded-[16px] overflow-hidden ${section.wide ? 'md:col-span-2' : ''} ${
+                  section.critical ? 'bg-sys-red/8 ring-1 ring-sys-red/25' : 'bg-surface shadow-card'
+                }`}
+              >
+                <header className="flex items-center gap-2.5 px-4 pt-3.5 pb-2">
+                  <span className={`glyph w-[26px] h-[26px] rounded-[7px] ${section.glyph}`}>
+                    <Icon className="w-[15px] h-[15px]" strokeWidth={2.25} />
+                  </span>
+                  <h4
+                    className={`text-[15px] font-semibold tracking-[-0.016em] ${
+                      section.critical ? 'text-sys-red' : 'text-label'
+                    }`}
+                  >
+                    {section.title}
+                  </h4>
+                  <span className="ml-auto text-[13px] text-label-2 tabular">{section.items.length}</span>
+                </header>
+                <ul className="pl-4">
+                  {section.items.map((item, idx) => (
+                    <li
+                      // biome-ignore lint/suspicious/noArrayIndexKey: items may repeat across sources
+                      key={`${section.key}-${idx}`}
+                      className={`pr-4 py-2.5 text-[15px] leading-snug tracking-[-0.012em] ${
+                        idx > 0 ? 'hairline-t' : ''
+                      } ${section.critical ? 'text-sys-red font-semibold' : 'text-label'}`}
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
       </div>
     </div>
   );

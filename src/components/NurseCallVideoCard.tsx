@@ -79,31 +79,27 @@ export const NurseCallVideoCard: FC<NurseCallVideoCardProps> = ({
 
   if (isDismissed) {
     return (
-      <div className="mt-3 overflow-hidden rounded-2xl border border-teal-500/25 dark:border-teal-400/20 bg-teal-50/50 dark:bg-slate-900/90 p-3 sm:p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs animate-in fade-in duration-300">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="w-8 h-8 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 flex items-center justify-center shrink-0 border border-teal-200 dark:border-teal-800">
-            <Play className="w-4 h-4 fill-current ml-0.5" />
-          </div>
-          <div>
-            <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100">
-              {resolvedTitle}
-            </p>
-          </div>
-        </div>
+      <div className="mt-3 rounded-[16px] bg-surface shadow-card p-3 flex items-center gap-3 anim-fade">
+        <span className="glyph w-9 h-9 rounded-[10px] bg-accent">
+          <Play className="w-4 h-4 fill-current ml-0.5" />
+        </span>
+        <p className="flex-1 min-w-0 text-[14px] font-semibold tracking-[-0.014em] text-label leading-snug">
+          {resolvedTitle}
+        </p>
         <button
           type="button"
           onClick={handleReplay}
-          className="w-full sm:w-auto px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+          className="pressable btn-tinted h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer shrink-0"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Eğitimi Tekrar Göster</span>
+          <RotateCcw className="w-3.5 h-3.5" strokeWidth={2.25} />
+          <span>Tekrar Göster</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-sm bg-black/95 relative group">
+    <div className="mt-3 overflow-hidden rounded-[16px] bg-black relative shadow-card">
       <video
         ref={videoRef}
         src={videoUrl}

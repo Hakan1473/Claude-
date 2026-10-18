@@ -69,7 +69,7 @@ const SPECIAL_CODE_MAP: Record<string, string> = {
 
 // Enlarged flag size classes for superior legibility and prominence (Pixel-perfect across all browsers)
 const SIZE_CLASSES = {
-  xs: 'w-[22px] h-[16px]',
+  xs: 'w-[21px] h-[15px]',
   sm: 'w-[26px] h-[18px] text-xs',
   md: 'w-[30px] h-[22px] text-sm',
   lg: 'w-[36px] h-[26px] text-base',
@@ -82,7 +82,7 @@ export const CountryFlag: React.FC<CountryFlagProps> = ({
   country = '',
   size = 'md',
   className = '',
-  animate = true,
+  animate = false,
 }) => {
   const [imgFailed, setImgFailed] = useState(false);
   const [usedFallback, setUsedFallback] = useState(false);
@@ -120,9 +120,9 @@ export const CountryFlag: React.FC<CountryFlagProps> = ({
       title={country || flag}
       aria-label={country || flag}
     >
-      {/* Fluttering Wind Cloth (Pure Flag, No Pole, Ultra-Realistic 3D Wave) */}
+      {/* Flag tile (optional flutter animation via `animate`) */}
       <span
-        className={`relative inline-block overflow-hidden rounded-[3px] shadow-[0_2px_5px_rgba(0,0,0,0.18)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] border border-black/10 dark:border-white/15 ${
+        className={`relative inline-block overflow-hidden rounded-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.12)] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.18)] ${
           animate ? 'flag-animated-cloth' : ''
         } ${SIZE_CLASSES[size]}`}
       >
