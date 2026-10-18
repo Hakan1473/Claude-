@@ -730,44 +730,45 @@ button {
   }
 }
 
-/* Splash — multilingual typographic strips */
+/* Splash — Mac-style "hello" greetings (see SplashScreen.tsx) */
 @layer components {
-  .splash-words {
-    gap: 2px;
-    font-size: clamp(26px, 6.2vw, 44px);
-    line-height: 1.12;
-    color: color-mix(in srgb, var(--label) 15%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
-    mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
-  }
-  .dark .splash-words {
-    color: color-mix(in srgb, var(--label) 20%, transparent);
-  }
-  .splash-word-serif {
-    font-family: "Instrument Serif", "Noto Serif", "Times New Roman", serif;
-    font-style: italic;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-  }
-  .splash-word-sans {
-    font-family: var(--font-sans);
-    font-weight: 300;
-    letter-spacing: -0.04em;
-  }
-  .splash-word-accent {
-    background: linear-gradient(90deg, #0a84ff, #5e5ce6 40%, #bf5af2 70%, #ff375f);
+  .splash-hello {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-size: clamp(54px, 15vw, 92px);
+    font-weight: 600;
+    letter-spacing: -0.055em;
+    line-height: 1;
+    padding-bottom: 0.08em;
+    background: linear-gradient(100deg, #0a84ff 0%, #5e5ce6 45%, #bf5af2 80%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    opacity: 0.6;
+    opacity: 0;
+    filter: blur(12px);
+    transform: translateY(8px) scale(0.96);
+    transition: opacity 0.7s var(--ease-apple), filter 0.7s var(--ease-apple), transform 0.9s var(--ease-apple);
   }
-  .splash-clearing {
-    background: radial-gradient(ellipse 44% 36% at 50% 50%, var(--bg) 0%, var(--bg) 38%, transparent 100%);
+  .splash-hello.on {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
   }
-  @media (max-width: 640px) {
-    .splash-clearing {
-      background: radial-gradient(ellipse 85% 36% at 50% 52%, var(--bg) 0%, var(--bg) 52%, transparent 100%);
-    }
+  .splash-hello.off {
+    opacity: 0;
+    filter: blur(12px);
+    transform: translateY(-8px) scale(1.02);
+  }
+  .splash-lang {
+    animation: fade-in 0.5s ease 0.15s both;
+  }
+  .splash-progress {
+    transform-origin: left center;
+    animation: progress-fill 3.1s var(--ease-apple) 0.4s both;
   }
 }
 
