@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hastane Canlı Sesli Tercüman</string>
+    <string name="tab_dialogue">Canlı Konuşma</string>
+    <string name="tab_anamnesis">Anamnez Tablosu</string>
+    <string name="tab_companion">Refakatçi</string>
+    <string name="action_start_listening">Dinlemeyi Başlat</string>
+    <string name="action_stop_listening">Durdur</string>
+    <string name="nurse_role">Hemşire / Sağlık Personeli</string>
+    <string name="patient_role">Hasta</string>
+    <string name="clear_dialogue">Temizle</string>
+    <string name="summary_title">Görüşme Özeti</string>
+    <string name="history_title">Görüşme Geçmişi</string>
+    <string name="settings_title">Ayarlar</string>
+</resources>
