@@ -57,6 +57,10 @@ export interface TranscriptMessage {
   tutorialVideoUrl?: string;
   tutorialVideoAltUrl?: string;
   tutorialVideoTitle?: string;
+  /** Result of the background translation check. */
+  verification?: 'checking' | 'verified' | 'corrected' | 'healed';
+  /** Short Turkish note about what the check changed. */
+  verificationNote?: string;
 }
 
 export type SessionState =

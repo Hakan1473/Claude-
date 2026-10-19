@@ -1,4 +1,4 @@
-import type { VoiceTranslationProvider, ProviderCallbacks } from './types';
+import type { VoiceTranslationProvider, ProviderCallbacks, LiveTurn } from './types';
 import type { SessionConfig, LanguageOption, TranscriptMessage, GeminiVoiceName } from '../../types/interpreter';
 import { extractMedicalDosages } from '../languageCatalog';
 import { detectSpeakerByLanguage, mergeUtteranceClauses } from '../../utils/speakerDetection';
@@ -11,7 +11,6 @@ import {
   extractMedicalEntities,
 } from '../../utils/medicalEntityExtractor';
 import { speechCoordinator } from '../audio/speechCoordinator';
-import { playNormalizedAudioWav } from '../audio/pcmHelper';
 
 interface LiveServerPayload {
   type?: string;
@@ -21,7 +20,30 @@ interface LiveServerPayload {
   message?: string;
   fallbackRequired?: boolean;
   languageCode?: string;
+  finished?: boolean;
   [key: string]: unknown;
+}
+
+// Transcript words arriving this soon after the interpreter started answering are a late tail of the
+// same utterance; anything later is a new utterance
+const LATE_INPUT_GRACE_MS = 700;
+// Upper bound for dropping a late live answer the guard already replaced
+const SUPPRESS_MAX_MS = 15000;
+// If the live model reports "generation complete" but never "turn complete", close the turn anyway
+const TURN_CLOSE_FALLBACK_MS = 2500;
+
+// Scripts that separate words with spaces (Latin incl. Turkish, Cyrillic, Arabic); CJK text must never get spaces
+const SPACED_WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F\u0400-\u04FF\u0600-\u06FF]/;
+
+/** Joins streamed text pieces without gluing words together. */
+function appendStreamText(existing: string, incoming: string): string {
+  if (!existing) return incoming;
+  const needsSpace =
+    !/\s$/.test(existing) &&
+    !/^\s/.test(incoming) &&
+    SPACED_WORD_CHAR.test(existing.slice(-1)) &&
+    SPACED_WORD_CHAR.test(incoming.charAt(0));
+  return needsSpace ? `${existing} ${incoming}` : existing + incoming;
 }
 
 export class GeminiLiveProvider implements VoiceTranslationProvider {
@@ -32,14 +54,16 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
   private activeVoiceName: GeminiVoiceName = 'Zephyr';
   private isSessionActive = false;
   private isLiveReady = false;
-  private lastInputText = '';
-  private accumulatedOutputText = '';
-  private lastInputMessage: TranscriptMessage | null = null;
-  private translationFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempts = 0;
   private pendingOutgoingAudio: string[] = [];
+
+  // The utterance currently being heard / answered
+  private turn: LiveTurn | null = null;
+  // The guard already answered the open turn: drop the live model's late answer until its turn completes
+  private suppressLiveAnswerUntil = 0;
+  private turnCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   public get isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
@@ -250,6 +274,7 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
         break;
 
       case 'voiceUpdated':
+      case 'recalibrated':
         if (data.voiceName) {
           this.activeVoiceName = data.voiceName as GeminiVoiceName;
         }
@@ -264,20 +289,10 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
 
       case 'audio':
         if (data.audio) {
-          // Live spoken audio arrived - cancel any pending fallback speech instantly
-          if (this.translationFallbackTimer) {
-            clearTimeout(this.translationFallbackTimer);
-            this.translationFallbackTimer = null;
-          }
-          if (this.lastInputMessage?.id) {
-            speechCoordinator.markVocalized(this.lastInputMessage.id);
-          }
-          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-            try {
-              window.speechSynthesis.cancel();
-            } catch {
-              // ignore
-            }
+          if (this.isSuppressingLiveAnswer()) break;
+          if (this.turn) {
+            if (!this.turn.firstAudioAt) this.turn.firstAudioAt = Date.now();
+            speechCoordinator.markVocalized(this.turn.id);
           }
           this.callbacks.onAudio?.(data.audio);
           this.callbacks.onStateChange?.('speaking');
@@ -285,15 +300,7 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
         break;
 
       case 'interrupted':
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          try {
-            window.speechSynthesis.cancel();
-          } catch {
-            // ignore
-          }
-        }
         this.callbacks.onInterrupted?.();
-        this.accumulatedOutputText = '';
         this.callbacks.onStateChange?.('listening');
         break;
 
@@ -305,244 +312,30 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
         break;
 
       case 'inputTranscription':
-        if (data.text) {
-          const rawText = data.text.trim();
-          // Filter out tiny phantom acoustic clicks
-          if (rawText.length < 2) break;
-
-          if (rawText && rawText !== this.lastInputText) {
-            this.lastInputText = rawText;
-
-            // Role Law:
-            // Turkish speech = ALWAYS nurse (Hemşire)
-            // Target language / foreign speech = ALWAYS patient (Hasta)
-            const detection = detectSpeakerByLanguage(rawText, this.activeTargetLanguage?.code);
-            const speaker: 'nurse' | 'patient' =
-              (data.speaker as 'nurse' | 'patient') || detection.speaker;
-
-            // Merge incoming clause with existing turn if open so long multi-clause sentences stay unbroken
-            if (
-              this.lastInputMessage &&
-              !this.lastInputMessage.translatedText &&
-              this.lastInputMessage.speaker === speaker
-            ) {
-              const mergedText = mergeUtteranceClauses(this.lastInputMessage.originalText, rawText);
-              const dosages = extractMedicalDosages(mergedText);
-              const tutorial = detectMedicalTutorialVideo(mergedText);
-              const isNurseCall =
-                this.lastInputMessage.showNurseCallTutorial || tutorial.type === 'nurse_call';
-              this.lastInputMessage = {
-                ...this.lastInputMessage,
-                originalText: mergedText,
-                showNurseCallTutorial: isNurseCall,
-                nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
-                showTutorialVideo: this.lastInputMessage.showTutorialVideo || tutorial.shouldShow,
-                tutorialVideoType: tutorial.type || this.lastInputMessage.tutorialVideoType,
-                tutorialVideoUrl: tutorial.videoUrl || this.lastInputMessage.tutorialVideoUrl,
-                tutorialVideoAltUrl: tutorial.altVideoUrl || this.lastInputMessage.tutorialVideoAltUrl,
-                tutorialVideoTitle: tutorial.title || this.lastInputMessage.tutorialVideoTitle,
-                highlightedDosages: Array.from(
-                  new Set([...(this.lastInputMessage.highlightedDosages || []), ...dosages])
-                ),
-              };
-              this.callbacks.onTranscript?.(this.lastInputMessage);
-            } else {
-              const cleanText = normalizeTranscriptText(rawText, data.languageCode);
-              const dosages = extractMedicalDosages(cleanText);
-              const entities = extractMedicalEntities(cleanText);
-              const tutorial = detectMedicalTutorialVideo(cleanText);
-              const isNurseCall = tutorial.type === 'nurse_call';
-              const msg: TranscriptMessage = {
-                id: `in-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                speaker,
-                originalText: cleanText,
-                timestamp: Date.now(),
-                language: data.languageCode || (speaker === 'nurse' ? 'tr' : this.activeTargetLanguage?.code),
-                highlightedDosages: dosages,
-                highlightedEntities: entities,
-                showNurseCallTutorial: isNurseCall,
-                nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
-                showTutorialVideo: tutorial.shouldShow,
-                tutorialVideoType: tutorial.type || undefined,
-                tutorialVideoUrl: tutorial.videoUrl,
-                tutorialVideoAltUrl: tutorial.altVideoUrl,
-                tutorialVideoTitle: tutorial.title,
-              };
-              this.lastInputMessage = msg;
-              this.callbacks.onTranscript?.(msg);
-            }
-
-            // Watchdog fallback auto-translation in case Gemini Live output audio stream is delayed
-            if (this.translationFallbackTimer) {
-              clearTimeout(this.translationFallbackTimer);
-            }
-            const targetMsg = this.lastInputMessage;
-            this.translationFallbackTimer = setTimeout(async () => {
-              if (targetMsg && !targetMsg.translatedText && targetMsg.originalText.length > 2) {
-                try {
-                  const res = await fetch('/api/translate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      text: targetMsg.originalText,
-                      targetLanguage: this.activeTargetLanguage?.name || 'English',
-                      speaker: targetMsg.speaker,
-                    }),
-                  });
-                  if (res.ok) {
-                    const transData = await res.json();
-                    if (transData.translatedText && !targetMsg.translatedText) {
-                      const outDosages = extractMedicalDosages(transData.translatedText);
-                      const tutorial = detectMedicalTutorialVideo(targetMsg.originalText, transData.translatedText);
-                      const isNurseCall =
-                        targetMsg.showNurseCallTutorial ||
-                        transData.showNurseCallTutorial ||
-                        tutorial.type === 'nurse_call';
-                      const showTutorial =
-                        targetMsg.showTutorialVideo ||
-                        transData.showTutorialVideo ||
-                        tutorial.shouldShow;
-                      const tutorialType =
-                        transData.tutorialVideoType ||
-                        tutorial.type ||
-                        targetMsg.tutorialVideoType;
-                      const videoUrl =
-                        transData.tutorialVideoUrl ||
-                        tutorial.videoUrl ||
-                        targetMsg.tutorialVideoUrl;
-
-                      const finalized: TranscriptMessage = {
-                        ...targetMsg,
-                        translatedText: transData.translatedText,
-                        speaker: transData.speaker || targetMsg.speaker,
-                        showNurseCallTutorial: isNurseCall,
-                        nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
-                        showTutorialVideo: showTutorial,
-                        tutorialVideoType: tutorialType || undefined,
-                        tutorialVideoUrl: videoUrl,
-                        tutorialVideoAltUrl: tutorial.altVideoUrl || targetMsg.tutorialVideoAltUrl,
-                        tutorialVideoTitle: tutorial.title || targetMsg.tutorialVideoTitle,
-                        highlightedDosages: Array.from(
-                          new Set([...(targetMsg.highlightedDosages || []), ...outDosages])
-                        ),
-                      };
-                      if (this.lastInputMessage?.id === targetMsg.id) {
-                        this.lastInputMessage = finalized;
-                      }
-                      this.callbacks.onTranscript?.(finalized);
-
-                      // Speak fallback translation aloud ONLY if never spoken before
-                      const canSpeak = speechCoordinator.canVocalizeAutomatically(
-                        finalized.id,
-                        transData.translatedText
-                      );
-                      if (canSpeak) {
-                        speechCoordinator.markVocalized(finalized.id, transData.translatedText);
-                        const targetLangCode =
-                          finalized.speaker === 'nurse'
-                            ? (this.activeTargetLanguage?.code || 'en')
-                            : 'tr';
-                        this.speakFallback(transData.translatedText, targetLangCode);
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.debug('[GeminiLiveProvider] Fallback translate note:', e);
-                }
-              }
-            }, 2400);
-          }
-        }
+        if (data.text) this.handleInputText(data.text, data.languageCode);
         break;
 
       case 'outputTranscription':
-        if (data.text) {
-          // Output transcription chunks arrive as stream deltas during spoken delivery
-          if (this.translationFallbackTimer) {
-            clearTimeout(this.translationFallbackTimer);
-            this.translationFallbackTimer = null;
-          }
+        if (data.text) this.handleOutputText(data.text);
+        break;
 
-          // Accumulate progressive text deltas cleanly without gluing words together
-          const incoming = data.text;
-          if (
-            this.accumulatedOutputText.length > 0 &&
-            !/\s$/.test(this.accumulatedOutputText) &&
-            !/[.,!?;:()\[\]\-\/]$/.test(this.accumulatedOutputText) &&
-            !/^\s/.test(incoming) &&
-            !/^[.,!?;:()\[\]\-\/]/.test(incoming) &&
-            /[a-zA-Z0-9çğışöüÇĞİŞÖÜа-яА-Я\u0600-\u06FF]/.test(this.accumulatedOutputText.slice(-1)) &&
-            /[a-zA-Z0-9çğışöüÇĞİŞÖÜа-яА-Я\u0600-\u06FF]/.test(incoming.charAt(0))
-          ) {
-            this.accumulatedOutputText += ' ' + incoming;
-          } else {
-            this.accumulatedOutputText += incoming;
-          }
-          const cleanText = normalizeTranscriptText(this.accumulatedOutputText);
-          const dosages = extractMedicalDosages(cleanText);
-          const entities = extractMedicalEntities(cleanText);
-
-          if (this.lastInputMessage) {
-            const tutorial = detectMedicalTutorialVideo(
-              this.lastInputMessage.originalText,
-              cleanText
-            );
-            const isNurseCall =
-              this.lastInputMessage.showNurseCallTutorial || tutorial.type === 'nurse_call';
-            const showTutorial =
-              this.lastInputMessage.showTutorialVideo || tutorial.shouldShow;
-            const updated: TranscriptMessage = {
-              ...this.lastInputMessage,
-              translatedText: cleanText,
-              showNurseCallTutorial: isNurseCall,
-              nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
-              showTutorialVideo: showTutorial,
-              tutorialVideoType: tutorial.type || this.lastInputMessage.tutorialVideoType,
-              tutorialVideoUrl: tutorial.videoUrl || this.lastInputMessage.tutorialVideoUrl,
-              tutorialVideoAltUrl: tutorial.altVideoUrl || this.lastInputMessage.tutorialVideoAltUrl,
-              tutorialVideoTitle: tutorial.title || this.lastInputMessage.tutorialVideoTitle,
-              highlightedDosages: Array.from(
-                new Set([...(this.lastInputMessage.highlightedDosages || []), ...dosages])
-              ),
-              highlightedEntities: Array.from(
-                new Set([...(this.lastInputMessage.highlightedEntities || []), ...entities])
-              ),
-            };
-            this.lastInputMessage = updated;
-            this.callbacks.onTranscript?.(updated);
-          } else {
-            const outDetection = detectSpeakerByLanguage(cleanText, this.activeTargetLanguage?.code);
-            const originSpeaker: 'nurse' | 'patient' = outDetection.isTurkish ? 'patient' : 'nurse';
-            const tutorial = detectMedicalTutorialVideo(cleanText);
-            const isNurseCall = tutorial.type === 'nurse_call';
-
-            this.callbacks.onTranscript?.({
-              id: `out-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-              speaker: originSpeaker,
-              originalText: originSpeaker === 'nurse' ? '(Türkçe Konuşma)' : `(${this.activeTargetLanguage?.name || 'Yabancı'} Konuşma)`,
-              translatedText: cleanText,
-              timestamp: Date.now(),
-              highlightedDosages: dosages,
-              highlightedEntities: entities,
-              showNurseCallTutorial: isNurseCall,
-              nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
-              showTutorialVideo: tutorial.shouldShow,
-              tutorialVideoType: tutorial.type || undefined,
-              tutorialVideoUrl: tutorial.videoUrl,
-              tutorialVideoAltUrl: tutorial.altVideoUrl,
-              tutorialVideoTitle: tutorial.title,
-            });
-          }
-        }
+      case 'generationComplete':
+        if (this.isSuppressingLiveAnswer()) break;
+        if (this.turnCloseTimer) clearTimeout(this.turnCloseTimer);
+        this.turnCloseTimer = setTimeout(() => this.closeTurn(), TURN_CLOSE_FALLBACK_MS);
         break;
 
       case 'turnComplete':
-        // Turn completed: reset accumulated delta text for the next turn
-        this.accumulatedOutputText = '';
-        if (this.translationFallbackTimer) {
-          clearTimeout(this.translationFallbackTimer);
-          this.translationFallbackTimer = null;
+        if (this.isSuppressingLiveAnswer()) {
+          // This completes the replaced late answer. A turn opened meanwhile keeps waiting for its own answer
+          // (if the live model never gives one, the guard answers it as well)
+          this.suppressLiveAnswerUntil = 0;
+          if (this.turn && !this.turn.firstAudioAt && !this.turn.translation) {
+            this.callbacks.onStateChange?.('listening');
+            break;
+          }
         }
+        this.closeTurn();
         this.callbacks.onStateChange?.('listening');
         break;
 
@@ -560,46 +353,137 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
     }
   }
 
-  private speakFallback(text: string, langCode: string) {
-    // Priority 1: High-definition neural Gemini TTS with active user-selected voice
-    (async () => {
-      try {
-        const res = await fetch('/api/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            voiceName: this.activeVoiceName,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.audio) {
-            this.callbacks.onStateChange?.('speaking');
-            await playNormalizedAudioWav(data.audio);
-            this.callbacks.onStateChange?.('listening');
-            return;
-          }
-        }
-      } catch (ttsErr) {
-        console.warn('[GeminiLiveProvider] Backend TTS note:', ttsErr);
-      }
+  /** Speaker comes from the whole utterance, never from a single streamed fragment. */
+  private resolveSpeaker(text: string, languageCode?: string): 'nurse' | 'patient' {
+    const target = this.activeTargetLanguage?.code?.toLowerCase();
+    const lc = languageCode?.toLowerCase();
+    if (lc) {
+      if (lc.startsWith('tr')) return 'nurse';
+      if (target && target !== 'tr' && lc.startsWith(target)) return 'patient';
+    }
+    return detectSpeakerByLanguage(text, this.activeTargetLanguage?.code).speaker;
+  }
 
-      // Priority 2: Browser SpeechSynthesis fallback
-      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-      try {
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = langCode === 'tr' ? 'tr-TR' : langCode;
-        utter.volume = 1.0;
-        utter.rate = 1.0;
-        utter.onstart = () => this.callbacks.onStateChange?.('speaking');
-        utter.onend = () => this.callbacks.onStateChange?.('listening');
-        window.speechSynthesis.speak(utter);
-      } catch (e) {
-        console.warn('Speech synthesis note:', e);
-      }
-    })();
+  private buildMessage(turn: LiveTurn, languageCode?: string): TranscriptMessage {
+    const original = normalizeTranscriptText(turn.sourceText, languageCode);
+    const translated = turn.translation ? normalizeTranscriptText(turn.translation) : undefined;
+    const tutorial = detectMedicalTutorialVideo(original, translated);
+    const isNurseCall = tutorial.type === 'nurse_call';
+    return {
+      ...turn.message,
+      speaker: turn.speaker,
+      originalText: original,
+      translatedText: translated,
+      language: languageCode || turn.message.language || (turn.speaker === 'nurse' ? 'tr' : this.activeTargetLanguage?.code),
+      highlightedDosages: Array.from(
+        new Set([...extractMedicalDosages(original), ...(translated ? extractMedicalDosages(translated) : [])])
+      ),
+      highlightedEntities: extractMedicalEntities(`${original} ${translated || ''}`),
+      showNurseCallTutorial: isNurseCall,
+      nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
+      showTutorialVideo: tutorial.shouldShow,
+      tutorialVideoType: tutorial.type || undefined,
+      tutorialVideoUrl: tutorial.videoUrl,
+      tutorialVideoAltUrl: tutorial.altVideoUrl,
+      tutorialVideoTitle: tutorial.title,
+    };
+  }
+
+  private publish(turn: LiveTurn, languageCode?: string) {
+    turn.message = this.buildMessage(turn, languageCode);
+    this.callbacks.onTranscript?.(turn.message);
+    this.callbacks.onTurnUpdate?.(turn);
+  }
+
+  private openTurn(now: number, speaker: 'nurse' | 'patient', sourceText: string, translation = ''): LiveTurn {
+    const id = `in-${now}-${Math.random().toString(36).substring(2, 7)}`;
+    this.turn = {
+      id,
+      speaker,
+      sourceText,
+      translation,
+      startedAt: now,
+      lastInputAt: now,
+      firstAudioAt: null,
+      closedAt: null,
+      message: { id, speaker, originalText: sourceText, timestamp: now },
+    };
+    return this.turn;
+  }
+
+  private handleInputText(rawText: string, languageCode?: string) {
+    const text = rawText.trim();
+    // Filter out tiny phantom acoustic clicks
+    if (text.length < 2) return;
+
+    const now = Date.now();
+    const current = this.turn;
+    const answerStartedLongAgo =
+      current?.firstAudioAt != null && now - current.firstAudioAt > LATE_INPUT_GRACE_MS;
+
+    if (!current || current.closedAt || answerStartedLongAgo) {
+      // A new utterance. If the previous one never got its "turn complete", close it now.
+      if (current && !current.closedAt) this.closeTurn();
+      const turn = this.openTurn(now, this.resolveSpeaker(text, languageCode), text);
+      this.publish(turn, languageCode);
+      return;
+    }
+
+    current.sourceText = mergeUtteranceClauses(current.sourceText, text);
+    current.lastInputAt = now;
+    current.speaker = this.resolveSpeaker(current.sourceText, languageCode);
+    this.publish(current, languageCode);
+  }
+
+  private isSuppressingLiveAnswer(): boolean {
+    return Date.now() < this.suppressLiveAnswerUntil;
+  }
+
+  private handleOutputText(incoming: string) {
+    if (this.isSuppressingLiveAnswer()) return;
+    let turn = this.turn;
+
+    if (!turn || turn.closedAt) {
+      // The interpreter spoke without a transcript of what it heard: keep the translation anyway
+      const outTurkish = detectSpeakerByLanguage(incoming, this.activeTargetLanguage?.code).isTurkish;
+      const speaker: 'nurse' | 'patient' = outTurkish ? 'patient' : 'nurse';
+      turn = this.openTurn(
+        Date.now(),
+        speaker,
+        speaker === 'nurse' ? '(Türkçe konuşma)' : `(${this.activeTargetLanguage?.nameTr || 'Yabancı dilde'} konuşma)`
+      );
+    }
+
+    turn.translation = appendStreamText(turn.translation, incoming);
+    this.publish(turn);
+  }
+
+  private closeTurn() {
+    if (this.turnCloseTimer) {
+      clearTimeout(this.turnCloseTimer);
+      this.turnCloseTimer = null;
+    }
+    const turn = this.turn;
+    if (!turn || turn.closedAt) return;
+    turn.closedAt = Date.now();
+    this.callbacks.onTurnClosed?.(turn);
+  }
+
+  /**
+   * The guard answered the still-open turn itself. Close it (new speech starts a new turn) and drop the
+   * live model's late answer to it, so the listener never hears the same sentence twice.
+   */
+  public suppressTurnAudio(turnId: string): void {
+    const turn = this.turn;
+    if (!turn || turn.id !== turnId || turn.closedAt) return;
+    this.suppressLiveAnswerUntil = Date.now() + SUPPRESS_MAX_MS;
+    this.closeTurn();
+  }
+
+  public recalibrate(reason: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'recalibrate', reason }));
+    }
   }
 
   public sendAudio(base64Pcm16k: string): void {
@@ -632,9 +516,7 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
 
   public setTargetLanguage(language: LanguageOption): void {
     this.activeTargetLanguage = language;
-    this.lastInputText = '';
-    this.accumulatedOutputText = '';
-    this.lastInputMessage = null;
+    this.dropTurn();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(
         JSON.stringify({
@@ -661,37 +543,26 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
 
   /** Forget the open turn so a new or restored conversation never receives late updates from the old one. */
   public resetTurnContext(): void {
-    if (this.translationFallbackTimer) {
-      clearTimeout(this.translationFallbackTimer);
-      this.translationFallbackTimer = null;
+    this.dropTurn();
+  }
+
+  /** Forget the open turn without reporting it (language switch, new conversation, stop). */
+  private dropTurn() {
+    if (this.turnCloseTimer) {
+      clearTimeout(this.turnCloseTimer);
+      this.turnCloseTimer = null;
     }
-    this.lastInputText = '';
-    this.accumulatedOutputText = '';
-    this.lastInputMessage = null;
+    this.turn = null;
+    this.suppressLiveAnswerUntil = 0;
   }
 
   public interrupt(): void {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {
-        // ignore
-      }
-    }
-    this.accumulatedOutputText = '';
     this.callbacks.onInterrupted?.();
   }
 
   public async stopSession(): Promise<void> {
     this.isSessionActive = false;
     this.isLiveReady = false;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {
-        // ignore
-      }
-    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -700,13 +571,7 @@ export class GeminiLiveProvider implements VoiceTranslationProvider {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
-    if (this.translationFallbackTimer) {
-      clearTimeout(this.translationFallbackTimer);
-      this.translationFallbackTimer = null;
-    }
-    this.lastInputText = '';
-    this.accumulatedOutputText = '';
-    this.lastInputMessage = null;
+    this.dropTurn();
     this.pendingOutgoingAudio = [];
     this.closeExistingWs();
     this.callbacks.onStateChange?.('idle');
