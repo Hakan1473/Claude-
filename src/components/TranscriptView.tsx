@@ -10,8 +10,6 @@ import {
   MessagesSquare,
   AudioLines,
   CornerDownRight,
-  ShieldCheck,
-  ShieldAlert,
 } from 'lucide-react';
 import { detectMedicalTutorialVideo } from '../utils/medicalTutorialDetection';
 import { NurseCallVideoCard } from './NurseCallVideoCard';
@@ -28,36 +26,6 @@ interface TranscriptViewProps {
   dialogueMessagesCount?: number;
   selectedVoice?: string;
 }
-
-/** Result of the background translation check, shown next to the translation label. */
-const VerificationBadge: FC<{ msg: TranscriptMessage }> = ({ msg }) => {
-  switch (msg.verification) {
-    case 'checking':
-      return (
-        <span className="inline-flex items-center gap-1 ml-1.5 text-label-3" title="Çeviri denetleniyor">
-          <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2.25} />
-          Denetleniyor
-        </span>
-      );
-    case 'verified':
-      return (
-        <span className="inline-flex items-center gap-1 ml-1.5 text-sys-green" title="Çeviri, söylenenle karşılaştırıldı ve doğru bulundu">
-          <ShieldCheck className="w-3.5 h-3.5" strokeWidth={2.25} />
-          Doğrulandı
-        </span>
-      );
-    case 'corrected':
-    case 'healed':
-      return (
-        <span className="inline-flex items-center gap-1 ml-1.5 text-sys-orange" title={msg.verificationNote}>
-          <ShieldAlert className="w-3.5 h-3.5" strokeWidth={2.25} />
-          {msg.verification === 'corrected' ? 'Düzeltildi' : 'Denetçi çevirdi'}
-        </span>
-      );
-    default:
-      return null;
-  }
-};
 
 export const TranscriptView: FC<TranscriptViewProps> = ({
   messages,
@@ -154,9 +122,6 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
             ...msg,
             speaker: resolvedSpeaker,
             translatedText,
-            // A manual re-translation was not checked by the guard
-            verification: undefined,
-            verificationNote: undefined,
           });
         }
       }
@@ -362,10 +327,9 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
               {msg.translatedText ? (
                 <div className="mt-3 pt-3 hairline-t">
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[12px] font-medium text-label-2 inline-flex items-center gap-1 min-w-0">
-                      <CornerDownRight className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-                      <span className="truncate">Çeviri · {isNurse ? targetLanguageName : 'Türkçe'}</span>
-                      <VerificationBadge msg={msg} />
+                    <span className="text-[12px] font-medium text-label-2 inline-flex items-center gap-1">
+                      <CornerDownRight className="w-3.5 h-3.5" strokeWidth={2} />
+                      Çeviri · {isNurse ? targetLanguageName : 'Türkçe'}
                     </span>
                     <button
                       type="button"
@@ -391,9 +355,6 @@ export const TranscriptView: FC<TranscriptViewProps> = ({
                   >
                     {msg.translatedText}
                   </p>
-                  {(msg.verification === 'corrected' || msg.verification === 'healed') && msg.verificationNote && (
-                    <p className="mt-1.5 text-[12px] leading-snug text-sys-orange">{msg.verificationNote}</p>
-                  )}
                 </div>
               ) : (
                 <p className="mt-3 pt-3 hairline-t text-[13px] text-label-3">
