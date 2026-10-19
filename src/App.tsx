@@ -23,7 +23,6 @@ import {
   clearAllConversationHistory,
 } from './services/historyStorage';
 import { InterpreterSession } from './services/interpreterSession';
-import { TranslationSupervisor } from './services/translationSupervisor';
 import { InterpreterButton } from './components/InterpreterButton';
 import { TranscriptView } from './components/TranscriptView';
 import { LiveAnamnesisPanel } from './components/LiveAnamnesisPanel';
@@ -223,37 +222,11 @@ export default function App() {
 
   const [isToggling, setIsToggling] = useState(false);
   const sessionRef = useRef<InterpreterSession | null>(null);
-  const supervisorRef = useRef<TranslationSupervisor | null>(null);
   const messagesRef = useRef<TranscriptMessage[]>([]);
 
-  // Initialize background translation supervisor (Audits every turn, auto-heals dropped translations)
-  useEffect(() => {
-    const supervisor = new TranslationSupervisor(
-      {
-        onUpdateMessage: (healed) => {
-          // Merge so the original timestamp, language and extracted entities survive the heal
-          setMessages((prev) =>
-            prev.map((m) => (m.id === healed.id ? { ...m, ...healed, timestamp: m.timestamp } : m))
-          );
-        },
-      },
-      targetLanguage,
-      selectedVoice
-    );
-    supervisor.attachSession(sessionRef.current);
-    supervisor.notifySessionState(sessionState);
-    supervisorRef.current = supervisor;
-
-    return () => {
-      supervisor.destroy();
-      supervisorRef.current = null;
-    };
-  }, [targetLanguage, selectedVoice]);
-
-  // Keep messagesRef synchronously updated and feed supervisor
+  // Keep messagesRef synchronously updated
   useEffect(() => {
     messagesRef.current = messages;
-    supervisorRef.current?.inspectMessages(messages);
   }, [messages]);
 
   // Sync theme changes with DOM and localStorage
@@ -339,12 +312,10 @@ export default function App() {
 
     const session = new InterpreterSession();
     sessionRef.current = session;
-    supervisorRef.current?.attachSession(session);
 
     session.setListeners({
       onStateChange: (state) => {
         setSessionState(state);
-        supervisorRef.current?.notifySessionState(state);
       },
       onTranscript: (msg) => {
         // Normalize speech typos & capitalization, extract medical entities
@@ -452,9 +423,6 @@ export default function App() {
     }
     if (sessionRef.current) {
       sessionRef.current.setVoice(voice);
-    }
-    if (supervisorRef.current) {
-      supervisorRef.current.updateVoice(voice);
     }
   };
 

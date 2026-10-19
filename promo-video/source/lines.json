@@ -1,0 +1,14 @@
+[
+ ["u1","nurse","Ağrınız nerede, ne zaman başladı?"],
+ ["u2","sysEN","Where is your pain, and when did it start?"],
+ ["u3","patient","It's in my chest, since this morning. I take Amlodis, ten milligrams, and I'm allergic to penicillin."],
+ ["u4","sysTR","Göğsümde, sabahtan beri. Amlodis on miligram kullanıyorum ve penisiline alerjim var."],
+ ["u5","nurse","Başka bir hastalığınız ya da geçirdiğiniz bir ameliyat var mı?"],
+ ["u6","sysEN","Do you have any other illness, or have you had surgery before?"],
+ ["u7","patient","I have high blood pressure. I had gallbladder surgery two years ago."],
+ ["u8","sysTR","Yüksek tansiyonum var. İki yıl önce safra kesesi ameliyatı oldum."],
+ ["u10","relative","Toma una pastilla para la presión todas las mañanas."],
+ ["u11","sysTR","Her sabah tansiyon hapı alıyor."],
+ ["u12","nurse","Bir şeye ihtiyacınız olursa, yatağınızın yanındaki kırmızı butona basın."],
+ ["u13","sysEN","If you need anything, press the red button next to your bed."]
+]
