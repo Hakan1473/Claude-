@@ -69,14 +69,11 @@ export class RealtimeAudioPlayer {
   // Measures what is actually being played so the UI can visualise the interpreter's voice
   private analyser: AnalyserNode | null = null;
   private levelBuffer: Float32Array<ArrayBuffer> | null = null;
-  private limiter: DynamicsCompressorNode | null = null;
   private nextPlayTime: number = 0;
   private activeSources: AudioBufferSourceNode[] = [];
   private isInterrupted: boolean = false;
   private playbackEndTimeout: ReturnType<typeof setTimeout> | null = null;
   private onPlaybackStateChange?: (isPlaying: boolean) => void;
-  private playing = false;
-  private lastPlaybackEndAt = 0;
 
   constructor(onPlaybackStateChange?: (isPlaying: boolean) => void) {
     this.onPlaybackStateChange = onPlaybackStateChange;
@@ -87,15 +84,7 @@ export class RealtimeAudioPlayer {
     return this.activeSources.length > 0 || this.audioCtx.currentTime < this.nextPlayTime;
   }
 
-  /** Milliseconds since the last sound stopped (0 while playing, Infinity if nothing played yet). */
-  public msSincePlaybackEnd(): number {
-    if (this.isPlaying()) return 0;
-    return this.lastPlaybackEndAt ? performance.now() - this.lastPlaybackEndAt : Infinity;
-  }
-
   private notifyPlaybackState(playing: boolean) {
-    if (!playing && this.playing) this.lastPlaybackEndAt = performance.now();
-    this.playing = playing;
     if (this.onPlaybackStateChange) {
       this.onPlaybackStateChange(playing);
     }
@@ -123,53 +112,33 @@ export class RealtimeAudioPlayer {
         this.audioCtx.resume().catch(() => {});
       }
 
-      // Output chain: Source -> Gain -> Compressor -> Limiter -> Analyser -> Destination.
-      // One fixed gain for the whole utterance keeps the voice natural; the gentle compressor evens out
-      // quiet and loud words and the limiter stops the boost from ever clipping (clipping is what crackles)
-      if (!this.compressor || !this.masterGain || !this.limiter) {
+      // Build hardware-accelerated audio processing chain for rock-solid loudness and zero fluctuations
+      if (!this.compressor || !this.masterGain) {
         try {
-          const now = this.audioCtx.currentTime;
-          this.masterGain = this.audioCtx.createGain();
-          this.masterGain.gain.setValueAtTime(1.35, now);
-
+          // DynamicsCompressor: Smooths volume dips and prevents distortion
           this.compressor = this.audioCtx.createDynamicsCompressor();
-          this.compressor.threshold.setValueAtTime(-20, now);
-          this.compressor.knee.setValueAtTime(18, now);
-          this.compressor.ratio.setValueAtTime(3, now);
-          this.compressor.attack.setValueAtTime(0.006, now);
-          this.compressor.release.setValueAtTime(0.25, now);
+          this.compressor.threshold.setValueAtTime(-26, this.audioCtx.currentTime); // dB
+          this.compressor.knee.setValueAtTime(10, this.audioCtx.currentTime); // dB
+          this.compressor.ratio.setValueAtTime(12, this.audioCtx.currentTime); // 12:1 compression
+          this.compressor.attack.setValueAtTime(0.003, this.audioCtx.currentTime); // 3ms fast attack
+          this.compressor.release.setValueAtTime(0.20, this.audioCtx.currentTime); // 200ms smooth decay
 
-          this.limiter = this.audioCtx.createDynamicsCompressor();
-          this.limiter.threshold.setValueAtTime(-2, now);
-          this.limiter.knee.setValueAtTime(0, now);
-          this.limiter.ratio.setValueAtTime(20, now);
-          this.limiter.attack.setValueAtTime(0.001, now);
-          this.limiter.release.setValueAtTime(0.1, now);
+          // Master Gain: Boosts overall volume so the AI voice is always loud and intelligible
+          this.masterGain = this.audioCtx.createGain();
+          this.masterGain.gain.setValueAtTime(1.9, this.audioCtx.currentTime); // 1.9x volume boost
 
+          // Routing: Source -> Compressor -> Master Gain -> Analyser -> Audio Destination
           this.analyser = this.audioCtx.createAnalyser();
           this.analyser.fftSize = 512;
           this.analyser.smoothingTimeConstant = 0.6;
           this.levelBuffer = new Float32Array(this.analyser.fftSize);
-
-          this.masterGain.connect(this.compressor);
-          this.compressor.connect(this.limiter);
-          this.limiter.connect(this.analyser);
+          this.compressor.connect(this.masterGain);
+          this.masterGain.connect(this.analyser);
           this.analyser.connect(this.audioCtx.destination);
         } catch (chainErr) {
-          console.warn('Audio output chain setup note:', chainErr);
-          this.masterGain = null;
-          this.compressor = null;
-          this.limiter = null;
+          console.warn('Audio compressor chain setup note:', chainErr);
         }
       }
-    }
-  }
-
-  private connectToOutput(source: AudioBufferSourceNode) {
-    if (this.masterGain && this.audioCtx) {
-      source.connect(this.masterGain);
-    } else if (this.audioCtx) {
-      source.connect(this.audioCtx.destination);
     }
   }
 
@@ -181,23 +150,22 @@ export class RealtimeAudioPlayer {
     try {
       const rawBytes = base64ToArrayBuffer(base64Pcm);
       const int16 = new Int16Array(rawBytes);
-      if (int16.length === 0) return;
+
+      // Analyze peak amplitude to detect quiet whispered or fluctuating phrases
+      let peak = 0;
+      for (let i = 0; i < int16.length; i++) {
+        const abs = Math.abs(int16[i]);
+        if (abs > peak) peak = abs;
+      }
+
+      // Pre-normalization boost factor: Elevate low-amplitude speech to reference target
+      const boostFactor = peak > 1000 ? Math.min(2.8, 30500 / peak) : 1.0;
 
       const float32 = new Float32Array(int16.length);
       for (let i = 0; i < int16.length; i++) {
-        float32[i] = int16[i] / 32768;
-      }
-
-      const currentTime = this.audioCtx.currentTime;
-      // Jitter buffer: when a new utterance starts (or the stream ran dry), start slightly in the future so
-      // network jitter between chunks does not open audible gaps in the middle of words
-      const underrun = this.nextPlayTime < currentTime + 0.01;
-      const startTime = underrun ? currentTime + 0.12 : this.nextPlayTime;
-
-      if (underrun) {
-        // Soften the first few milliseconds so a restart after a gap never clicks
-        const fade = Math.min(float32.length, 96);
-        for (let i = 0; i < fade; i++) float32[i] *= i / fade;
+        const sample = (int16[i] * boostFactor) / 32768.0;
+        // Soft-clip safety threshold to avoid digital buzzing
+        float32[i] = Math.max(-0.99, Math.min(0.99, sample));
       }
 
       const audioBuffer = this.audioCtx.createBuffer(1, float32.length, 24000);
@@ -205,8 +173,16 @@ export class RealtimeAudioPlayer {
 
       const source = this.audioCtx.createBufferSource();
       source.buffer = audioBuffer;
-      this.connectToOutput(source);
 
+      // Route through compressor + master gain chain
+      if (this.compressor) {
+        source.connect(this.compressor);
+      } else {
+        source.connect(this.audioCtx.destination);
+      }
+
+      const currentTime = this.audioCtx.currentTime;
+      const startTime = Math.max(currentTime, this.nextPlayTime);
       source.start(startTime);
       this.nextPlayTime = startTime + audioBuffer.duration;
 
@@ -251,7 +227,13 @@ export class RealtimeAudioPlayer {
 
           const source = ctx.createBufferSource();
           source.buffer = audioBuffer;
-          this.connectToOutput(source);
+
+          // Route through compressor + master gain chain
+          if (this.compressor) {
+            source.connect(this.compressor);
+          } else {
+            source.connect(ctx.destination);
+          }
 
           this.notifyPlaybackState(true);
           source.start(0);
@@ -319,7 +301,6 @@ export class RealtimeAudioPlayer {
     // Nodes belong to the closed context; drop them so a later initContext() builds a fresh chain
     this.audioCtx = null;
     this.compressor = null;
-    this.limiter = null;
     this.masterGain = null;
     this.analyser = null;
     this.levelBuffer = null;
@@ -339,12 +320,6 @@ export function getSharedAudioPlayer(): RealtimeAudioPlayer {
 /** Loudness of on-demand playback (replay / fallback speech), 0–1. */
 export function getSharedOutputLevel(): number {
   return sharedGlobalAudioPlayer?.getOutputLevel() ?? 0;
-}
-
-/** Whether on-demand speech (replay, fallback or correction) is playing or has just stopped. */
-export function isSharedPlaybackActive(tailMs: number = 0): boolean {
-  if (!sharedGlobalAudioPlayer) return false;
-  return sharedGlobalAudioPlayer.msSincePlaybackEnd() <= tailMs;
 }
 
 /** Stops any on-demand playback started through playNormalizedAudioWav(). */

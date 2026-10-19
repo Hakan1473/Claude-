@@ -14,25 +14,13 @@ import {
   arrayBufferToBase64,
   downsampleTo16k,
   getSharedOutputLevel,
-  isSharedPlaybackActive,
-  playNormalizedAudioWav,
 } from './audio/pcmHelper';
-import { TranslationGuard } from './translationSupervisor';
 import { extractMedicalDosages } from './languageCatalog';
 import { detectSpeakerByLanguage } from '../utils/speakerDetection';
 import {
   detectMedicalTutorialVideo,
   NURSE_CALL_VIDEO_URL,
 } from '../utils/medicalTutorialDetection';
-
-// How long the interpreter's echo can linger in the room after its voice stops
-const ECHO_TAIL_MS = 350;
-// Someone counts as "talking now" if speech was heard this recently
-const SPEAKING_NOW_MS = 300;
-// ...and as "finished" after this much quiet
-const SPEECH_ENDED_MS = 500;
-// Never hold a translation back longer than this
-const MAX_HOLD_MS = 3000;
 
 export class InterpreterSession {
   private activeProvider: VoiceTranslationProvider | null = null;
@@ -41,7 +29,14 @@ export class InterpreterSession {
   private inputAudioCtx: AudioContext | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private highpassFilter: BiquadFilterNode | null = null;
+  private lowpassFilter: BiquadFilterNode | null = null;
   private silenceGainNode: GainNode | null = null;
+
+  // Voice Activity Detection (VAD) / Noise Gate
+  private isSpeechGateOpen: boolean = false;
+  private lastSpeechDetectedTime: number = 0;
+  private preSpeechBuffer: Float32Array[] = [];
 
   private onStateChangeCb: (state: SessionState) => void = () => {};
   private onTranscriptCb: (msg: TranscriptMessage) => void = () => {};
@@ -67,16 +62,6 @@ export class InterpreterSession {
   // preventing any race conditions even if the user starts and stops 10+ times in a row.
   private lifecycleMutex: Promise<void> = Promise.resolve();
 
-  // Local speech detection (adaptive to the room's background noise)
-  private noiseFloor = 0.004;
-  private lastLocalSpeechAt = 0;
-  // Live translation audio held back while someone is still talking
-  private heldAudio: string[] = [];
-  private holdStartedAt = 0;
-  private holdTimer: ReturnType<typeof setInterval> | null = null;
-
-  private guard: TranslationGuard;
-
   constructor() {
     this.audioPlayer = new RealtimeAudioPlayer((playing) => {
       this.isAiSpeaking = playing;
@@ -84,116 +69,6 @@ export class InterpreterSession {
         this.onStateChangeCb('speaking');
       } else if (this.isRunning) {
         this.onStateChangeCb('listening');
-      }
-    });
-
-    this.guard = new TranslationGuard({
-      emitMessage: (msg) => this.onTranscriptCb(msg),
-      speak: (text, lang) => this.speakWhenQuiet(text, lang),
-      suppressLiveAudio: (turnId) => this.activeProvider?.suppressTurnAudio?.(turnId),
-      recalibrate: (reason) => void this.recalibrateWhenQuiet(reason),
-      getTargetLanguage: () => this.activeTargetLanguage,
-    });
-  }
-
-  /** Interpreter audio is playing, or stopped so recently that its echo may still be in the room. */
-  private isOutputActive(): boolean {
-    return this.audioPlayer.msSincePlaybackEnd() < ECHO_TAIL_MS || isSharedPlaybackActive(ECHO_TAIL_MS);
-  }
-
-  private isSomeoneSpeaking(withinMs: number): boolean {
-    return performance.now() - this.lastLocalSpeechAt < withinMs;
-  }
-
-  /** Live audio waits while the speaker is still talking, so a pause mid-sentence never talks over them. */
-  private enqueueLiveAudio(chunk: string) {
-    if (this.heldAudio.length === 0 && (this.audioPlayer.isPlaying() || !this.isSomeoneSpeaking(SPEAKING_NOW_MS))) {
-      this.audioPlayer.playPcmChunk(chunk);
-      return;
-    }
-    if (this.heldAudio.length === 0) this.holdStartedAt = performance.now();
-    this.heldAudio.push(chunk);
-    if (!this.holdTimer) {
-      this.holdTimer = setInterval(() => {
-        const waited = performance.now() - this.holdStartedAt;
-        if (!this.isSomeoneSpeaking(SPEECH_ENDED_MS) || waited > MAX_HOLD_MS) this.releaseHeldAudio(true);
-      }, 80);
-    }
-  }
-
-  private releaseHeldAudio(play: boolean) {
-    if (this.holdTimer) {
-      clearInterval(this.holdTimer);
-      this.holdTimer = null;
-    }
-    const chunks = this.heldAudio;
-    this.heldAudio = [];
-    if (play) chunks.forEach((c) => this.audioPlayer.playPcmChunk(c));
-  }
-
-  private isRoomQuiet(speechQuietMs: number): boolean {
-    return (
-      !this.audioPlayer.isPlaying() &&
-      this.audioPlayer.msSincePlaybackEnd() > 400 &&
-      !isSharedPlaybackActive(200) &&
-      this.heldAudio.length === 0 &&
-      !this.isSomeoneSpeaking(speechQuietMs)
-    );
-  }
-
-  /** Restarts the live session between utterances, never in the middle of one. */
-  private async recalibrateWhenQuiet(reason: string): Promise<void> {
-    const deadline = performance.now() + 20000;
-    while (performance.now() < deadline) {
-      if (!this.isRunning) return;
-      if (this.isRoomQuiet(1200)) {
-        console.info('[TranslationGuard] Recalibrating live interpreter:', reason);
-        this.activeProvider?.recalibrate?.(reason);
-        return;
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
-  }
-
-  /** Speaks a guard translation/correction once the room is quiet (gives up after a while). */
-  private async speakWhenQuiet(text: string, languageCode: string): Promise<void> {
-    if (!this.isRunning || !text.trim()) return;
-    let audio: string | null = null;
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voiceName: this.activeVoiceName }),
-      });
-      if (res.ok) audio = (await res.json()).audio || null;
-    } catch (err) {
-      console.warn('[InterpreterSession] Correction speech unavailable:', err);
-    }
-
-    const deadline = performance.now() + 12000;
-    while (performance.now() < deadline) {
-      if (!this.isRunning) return;
-      if (this.isRoomQuiet(700)) break;
-      await new Promise((r) => setTimeout(r, 150));
-    }
-    if (!this.isRunning || performance.now() >= deadline) return;
-
-    if (audio) {
-      this.onStateChangeCb('speaking');
-      await playNormalizedAudioWav(audio);
-      if (this.isRunning) this.onStateChangeCb('listening');
-      return;
-    }
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    await new Promise<void>((resolve) => {
-      try {
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = languageCode === 'tr' ? 'tr-TR' : languageCode;
-        utter.onend = () => resolve();
-        utter.onerror = () => resolve();
-        window.speechSynthesis.speak(utter);
-      } catch {
-        resolve();
       }
     });
   }
@@ -326,7 +201,19 @@ export class InterpreterSession {
       const sampleRate = ctx.sampleRate;
       this.sourceNode = ctx.createMediaStreamSource(this.mediaStream);
 
-      // ScriptProcessor with 2048 buffer gives ~42ms low latency chunking
+      // 1. Highpass filter at 120Hz: aggressively cuts off sub-vocal low-frequency rumble, handling thumps, AC hum, and table vibrations
+      this.highpassFilter = ctx.createBiquadFilter();
+      this.highpassFilter.type = 'highpass';
+      this.highpassFilter.frequency.setValueAtTime(120, ctx.currentTime);
+      this.highpassFilter.Q.setValueAtTime(0.7, ctx.currentTime);
+
+      // 2. Lowpass filter at 3800Hz: isolates the natural human speech frequency band and cuts out high-frequency hisses / metallic clatter
+      this.lowpassFilter = ctx.createBiquadFilter();
+      this.lowpassFilter.type = 'lowpass';
+      this.lowpassFilter.frequency.setValueAtTime(3800, ctx.currentTime);
+      this.lowpassFilter.Q.setValueAtTime(0.7, ctx.currentTime);
+
+      // 3. ScriptProcessor with 2048 buffer gives ~42ms low latency chunking
       this.processorNode = ctx.createScriptProcessor(2048, 1, 1);
 
       // WebKit / iOS Safari / Mobile Fix:
@@ -334,6 +221,12 @@ export class InterpreterSession {
       // onaudioprocess continues firing without pausing in background, and zero gain prevents feedback!
       this.silenceGainNode = ctx.createGain();
       this.silenceGainNode.gain.value = 0;
+
+      // Voice Activity Detection (VAD) / Noise Gate Thresholds:
+      // Normal speech has RMS >= 0.016 to 0.20
+      // Faint background whispers, distant ward chatter, and quiet breaths have RMS < 0.012
+      const SPEECH_RMS_THRESHOLD = 0.016;
+      const SPEECH_HANGOVER_MS = 650; // Holds gate open across natural pauses between words
 
       this.processorNode.onaudioprocess = (e) => {
         if (!this.isRunning) return;
@@ -345,61 +238,97 @@ export class InterpreterSession {
             this.lastAudioLevelTime = 0;
             this.onAudioLevelCb(0);
           }
+          this.isSpeechGateOpen = false;
+          this.preSpeechBuffer = [];
           return;
         }
 
         const channelData = e.inputBuffer.getChannelData(0);
         const now = performance.now();
 
+        // Compute RMS volume of the bandpassed signal
         let sum = 0;
         for (let i = 0; i < channelData.length; i++) {
           sum += channelData[i] * channelData[i];
         }
         const rms = Math.sqrt(sum / channelData.length);
 
-        // UI level meter (throttled to ~12fps)
+        // UI level meter: show active level only when above minimal noise floor (throttled to ~12fps)
         if (now - this.lastAudioLevelTime > 80) {
           this.lastAudioLevelTime = now;
-          this.onAudioLevelCb(Math.min(1, rms * 8));
+          const displayLevel = rms > 0.008 ? Math.min(1, (rms - 0.008) * 9) : 0;
+          this.onAudioLevelCb(displayLevel);
         }
 
-        // While the interpreter's own voice (or its echo) is in the room, the microphone sends silence:
-        // otherwise the model hears itself, transcribes its own translation and translates it again.
-        // Silence (instead of nothing) keeps the server's end-of-speech timing intact.
-        const echoGate = this.isOutputActive();
-
-        if (!echoGate) {
-          // Adaptive speech detection: follows the background noise level of the room
-          if (rms < this.noiseFloor) this.noiseFloor = this.noiseFloor * 0.9 + rms * 0.1;
-          else this.noiseFloor = Math.min(0.05, this.noiseFloor * 0.99 + rms * 0.01);
-          if (rms > Math.max(0.012, this.noiseFloor * 3.2)) this.lastLocalSpeechAt = now;
+        // When AI is actively outputting spoken translation, pause microphone sending to prevent echo loop
+        if (this.isAiSpeaking || this.audioPlayer.isPlaying()) {
+          this.pcmChunkBuffer = [];
+          this.preSpeechBuffer = [];
+          this.isSpeechGateOpen = false;
+          return;
         }
 
-        // Resample native browser microphone rate down to 16kHz PCM for Gemini Live
-        const resampled = echoGate
-          ? new Float32Array(Math.round((channelData.length * 16000) / sampleRate))
-          : downsampleTo16k(channelData, sampleRate);
-        for (let i = 0; i < resampled.length; i++) {
-          this.pcmChunkBuffer.push(resampled[i]);
-        }
+        // Voice Activity Detection (VAD) / Noise Gate:
+        // Ignore faint background sounds, whispers, or ambient room chatter
+        const isVoiceLevel = rms >= SPEECH_RMS_THRESHOLD;
 
-        // Stream continuous chunks of 2048 samples (~128ms)
-        if (this.pcmChunkBuffer.length >= 2048) {
-          const chunkToSend = new Float32Array(this.pcmChunkBuffer.slice(0, 2048));
-          this.pcmChunkBuffer = this.pcmChunkBuffer.slice(2048);
-          const int16 = float32ToInt16(chunkToSend);
-          const base64 = arrayBufferToBase64(
-            new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength)
-          );
-
-          if (this.activeProvider) {
-            this.activeProvider.sendAudio(base64);
+        if (isVoiceLevel) {
+          this.lastSpeechDetectedTime = now;
+          if (!this.isSpeechGateOpen) {
+            this.isSpeechGateOpen = true;
+            // Flush buffered pre-speech audio (onset consonants) into the pipeline
+            while (this.preSpeechBuffer.length > 0) {
+              const preChunk = this.preSpeechBuffer.shift();
+              if (preChunk) {
+                const resampledPre = downsampleTo16k(preChunk, sampleRate);
+                for (let i = 0; i < resampledPre.length; i++) {
+                  this.pcmChunkBuffer.push(resampledPre[i]);
+                }
+              }
+            }
           }
+        } else if (this.isSpeechGateOpen) {
+          // Check if hangover time has expired
+          if (now - this.lastSpeechDetectedTime > SPEECH_HANGOVER_MS) {
+            this.isSpeechGateOpen = false;
+          }
+        }
+
+        if (this.isSpeechGateOpen) {
+          // Gate is OPEN: user is speaking in normal conversational volume
+          const resampled = downsampleTo16k(channelData, sampleRate);
+          for (let i = 0; i < resampled.length; i++) {
+            this.pcmChunkBuffer.push(resampled[i]);
+          }
+
+          // Stream continuous chunks of 2048 samples (~128ms)
+          while (this.pcmChunkBuffer.length >= 2048) {
+            const chunkToSend = new Float32Array(this.pcmChunkBuffer.slice(0, 2048));
+            this.pcmChunkBuffer = this.pcmChunkBuffer.slice(2048);
+            const int16 = float32ToInt16(chunkToSend);
+            const base64 = arrayBufferToBase64(
+              new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength)
+            );
+
+            if (this.activeProvider) {
+              this.activeProvider.sendAudio(base64);
+            }
+          }
+        } else {
+          // Gate is CLOSED: faint background noise / whispers - do NOT send to model
+          // Maintain a rolling pre-speech buffer of ~2 frames (~90ms) so when speech starts, onset is preserved
+          this.pcmChunkBuffer = [];
+          if (this.preSpeechBuffer.length >= 2) {
+            this.preSpeechBuffer.shift();
+          }
+          this.preSpeechBuffer.push(new Float32Array(channelData));
         }
       };
 
-      if (this.sourceNode && this.processorNode && this.silenceGainNode && this.inputAudioCtx) {
-        this.sourceNode.connect(this.processorNode);
+      if (this.sourceNode && this.highpassFilter && this.lowpassFilter && this.processorNode && this.silenceGainNode && this.inputAudioCtx) {
+        this.sourceNode.connect(this.highpassFilter);
+        this.highpassFilter.connect(this.lowpassFilter);
+        this.lowpassFilter.connect(this.processorNode);
         this.processorNode.connect(this.silenceGainNode);
         this.silenceGainNode.connect(this.inputAudioCtx.destination);
       }
@@ -407,7 +336,6 @@ export class InterpreterSession {
       // Everything is verified and connected!
       this.isRunning = true;
       this.isStarting = false;
-      this.guard.start();
       this.onStateChangeCb('listening');
 
       // Start periodic health monitor to auto-revive audio graph if browser pauses it
@@ -474,13 +402,7 @@ export class InterpreterSession {
     if (!this.activeProvider) return;
     await this.activeProvider.startSession(config, {
       onAudio: (audioData) => {
-        this.enqueueLiveAudio(audioData);
-      },
-      onTurnUpdate: (turn) => {
-        this.guard.onTurnUpdate(turn);
-      },
-      onTurnClosed: (turn) => {
-        this.guard.onTurnClosed(turn);
+        this.audioPlayer.playPcmChunk(audioData);
       },
       onTranscript: (msg) => {
         this.onTranscriptCb(msg);
@@ -498,7 +420,6 @@ export class InterpreterSession {
         this.onLanguageDetectedCb(lang);
       },
       onInterrupted: () => {
-        this.releaseHeldAudio(false);
         this.audioPlayer.interrupt();
         this.onInterimCb('');
       },
@@ -542,8 +463,6 @@ export class InterpreterSession {
     if (this.activeProvider) {
       this.activeProvider.setTargetLanguage(language);
     }
-    this.guard.reset();
-    this.releaseHeldAudio(false);
     this.audioPlayer.interrupt();
     this.isAiSpeaking = false;
     if (this.isRunning) {
@@ -635,12 +554,10 @@ export class InterpreterSession {
   /** Called when the visible conversation is replaced (new, restored or deleted conversation). */
   public resetConversationContext() {
     this.activeProvider?.resetTurnContext?.();
-    this.guard.reset();
     this.onInterimCb('');
   }
 
   public interrupt() {
-    this.releaseHeldAudio(false);
     this.audioPlayer.interrupt();
     if (this.activeProvider) {
       this.activeProvider.interrupt();
@@ -665,6 +582,24 @@ export class InterpreterSession {
         // ignore
       }
       this.sourceNode = null;
+    }
+
+    if (this.highpassFilter) {
+      try {
+        this.highpassFilter.disconnect();
+      } catch {
+        // ignore
+      }
+      this.highpassFilter = null;
+    }
+
+    if (this.lowpassFilter) {
+      try {
+        this.lowpassFilter.disconnect();
+      } catch {
+        // ignore
+      }
+      this.lowpassFilter = null;
     }
 
     if (this.silenceGainNode) {
@@ -706,8 +641,6 @@ export class InterpreterSession {
     this.isAiSpeaking = false;
     this.pcmChunkBuffer = [];
     this.stopHealthMonitor();
-    this.guard.stop();
-    this.releaseHeldAudio(false);
 
     await this.cleanupAudioNodes();
     this.interrupt();

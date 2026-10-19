@@ -1,243 +1,341 @@
-import type { LanguageOption, TranscriptMessage } from '../types/interpreter';
-import type { LiveTurn } from './providers/types';
-import { detectSpeakerByLanguage } from '../utils/speakerDetection';
+import type { LanguageOption, TranscriptMessage, SessionState } from '../types/interpreter';
+import { extractMedicalDosages } from './languageCatalog';
+import { playNormalizedAudioWav } from './audio/pcmHelper';
+import { speechCoordinator } from './audio/speechCoordinator';
+import {
+  detectMedicalTutorialVideo,
+  NURSE_CALL_VIDEO_URL,
+  TRIFLOW_VIDEO_URL,
+} from '../utils/medicalTutorialDetection';
+import type { InterpreterSession } from './interpreterSession';
+
+export interface SupervisorCallbacks {
+  onUpdateMessage: (updated: TranscriptMessage) => void;
+  onPlayAudio?: (text: string, langCode: string) => void;
+}
+
+interface MonitoredTurn {
+  id: string;
+  originalText: string;
+  speaker: 'nurse' | 'patient';
+  targetLanguageName: string;
+  targetLanguageCode: string;
+  registeredAt: number;
+  attempts: number;
+  isSupervising: boolean;
+  isVerified: boolean;
+  hasAudioPlayed: boolean;
+}
 
 /**
- * Translation Guard (Çeviri Denetçisi)
- *
- * Watches every utterance the live interpreter handles and makes sure the listener heard a complete,
- * correct translation:
- * 1. Missing translation: if the live model stays silent after someone finished speaking, the guard
- *    translates the sentence itself, speaks it, and drops any late live answer so nothing is said twice.
- * 2. Wrong translation: when a turn ends, the source and the spoken translation are checked by a second
- *    model. A critical problem (wrong language, answered instead of translated, missing part, wrong
- *    number or meaning) is corrected on screen and the correction is spoken to the listener.
- * 3. Drift: repeated critical problems, or the model answering instead of translating, restart the live
- *    session with fresh context so one bad session cannot keep producing bad translations.
+ * Background Translation Supervisor (Otomatik Tercüme ve Sistem Denetleyicisi)
+ * 
+ * Silently audits the entire translation pipeline across start/stop/restart cycles.
+ * 
+ * Key Responsibilities:
+ * 1. Health Watchdog: Monitors active session status and verifies audio graph continuity
+ *    during repeated start/stop actions (5-10+ cycles).
+ * 2. Instant Translation Healing: If Gemini Live or websocket drops or delays an utterance
+ *    (e.g. after multiple reconnects), the supervisor catches the untranslated sentence within
+ *    2.8s, invokes rapid AI translation with orthographic precision, updates the UI and plays audio.
+ * 3. Lifecycle Synchronization: Cleans transient echo caches on session restarts so repeated
+ *    clinical queries are promptly translated and spoken.
  */
+export class TranslationSupervisor {
+  private monitoredTurns = new Map<string, MonitoredTurn>();
+  private playedAudioIds = new Set<string>();
+  private auditInterval: ReturnType<typeof setInterval> | null = null;
+  private isDestroyed = false;
+  private callbacks: SupervisorCallbacks;
+  private currentTargetLanguage: LanguageOption;
+  private activeVoiceName: string = 'Zephyr';
+  private session: InterpreterSession | null = null;
+  private currentSessionState: SessionState = 'idle';
 
-export interface GuardHooks {
-  /** Show an updated message in the conversation. */
-  emitMessage: (msg: TranscriptMessage) => void;
-  /** Speak text to the listener once nobody is talking. */
-  speak: (text: string, languageCode: string) => Promise<void>;
-  /** Drop late live audio for a turn the guard already answered. */
-  suppressLiveAudio: (turnId: string) => void;
-  /** Start a fresh live session. */
-  recalibrate: (reason: string) => void;
-  getTargetLanguage: () => LanguageOption | null;
-}
-
-interface VerifyResponse {
-  checked: boolean;
-  severity?: 'none' | 'minor' | 'critical';
-  issueTypes?: string[];
-  issuesTr?: string[];
-  correctedTranslation?: string;
-  correctionLead?: string;
-}
-
-// Time after the last heard word before a silent interpreter counts as "no answer"
-const NO_ANSWER_AFTER_MS = 4000;
-// Restart the live session when this many of the recent turns had critical problems
-const DRIFT_WINDOW = 4;
-const DRIFT_CRITICAL_COUNT = 2;
-const RECALIBRATE_COOLDOWN_MS = 60_000;
-// Problems that mean the live model stopped behaving like an interpreter
-const BEHAVIOUR_ISSUES = new Set(['wrong_language', 'not_a_translation']);
-
-export class TranslationGuard {
-  private openTurns = new Map<string, LiveTurn>();
-  private healedTurnIds = new Set<string>();
-  private recentCritical: boolean[] = [];
-  private lastRecalibrationAt = 0;
-  private generation = 0;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private running = false;
-
-  constructor(private hooks: GuardHooks) {}
-
-  public start() {
-    this.reset();
-    this.running = true;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = setInterval(() => this.checkSilentTurns(), 400);
+  constructor(
+    callbacks: SupervisorCallbacks,
+    initialLanguage: LanguageOption,
+    initialVoice: string = 'Zephyr'
+  ) {
+    this.callbacks = callbacks;
+    this.currentTargetLanguage = initialLanguage;
+    this.activeVoiceName = initialVoice;
+    this.startSupervisorLoop();
   }
 
-  public stop() {
-    this.running = false;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-    this.reset();
+  public attachSession(session: InterpreterSession | null) {
+    this.session = session;
   }
 
-  /** Forget everything in flight; answers to old requests are ignored. */
-  public reset() {
-    this.generation++;
-    this.openTurns.clear();
-    this.healedTurnIds.clear();
-    this.recentCritical = [];
-  }
+  public notifySessionState(state: SessionState) {
+    this.currentSessionState = state;
 
-  public onTurnUpdate(turn: LiveTurn) {
-    if (!this.running) return;
-    if (!turn.closedAt && !this.healedTurnIds.has(turn.id)) {
-      this.openTurns.set(turn.id, turn);
+    if (state === 'listening' || state === 'ready') {
+      // Clear transient echo suppression when starting/restarting
+      // so repeated questions after a break are immediately accepted and spoken
+      speechCoordinator.clearTransientHistory();
+    } else if (state === 'idle') {
+      // Do not play delayed automated speech while system is paused
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {}
+      }
     }
   }
 
-  public onTurnClosed(turn: LiveTurn) {
-    if (!this.running) return;
-    this.openTurns.delete(turn.id);
-    if (this.healedTurnIds.has(turn.id)) return;
-    if (isPlaceholder(turn.sourceText)) return;
-
-    if (!turn.translation.trim()) {
-      void this.heal(turn);
-      return;
-    }
-    void this.verify(turn);
+  public updateTargetLanguage(lang: LanguageOption) {
+    this.currentTargetLanguage = lang;
   }
 
-  /** Turns where the speaker finished but the live interpreter never answered. */
-  private checkSilentTurns() {
-    const now = Date.now();
-    for (const turn of Array.from(this.openTurns.values())) {
-      if (turn.closedAt || turn.firstAudioAt || turn.translation.trim()) {
-        this.openTurns.delete(turn.id);
+  public updateVoice(voiceName: string) {
+    this.activeVoiceName = voiceName;
+  }
+
+  /**
+   * Ingests messages from the conversation and registers any unverified turns.
+   */
+  public inspectMessages(messages: TranscriptMessage[]) {
+    if (this.isDestroyed || !messages || messages.length === 0) return;
+
+    for (const msg of messages) {
+      if (msg.speaker !== 'nurse' && msg.speaker !== 'patient') continue;
+      if (!msg.originalText || msg.originalText.trim().length < 2) continue;
+
+      const transText = msg.translatedText?.trim() || '';
+      const hasValidTranslation = transText.length > 0;
+
+      // Check if translation is an untranslated echo (e.g. Nurse Turkish -> translated text is also identical Turkish)
+      const isEchoUntranslated =
+        hasValidTranslation &&
+        msg.speaker === 'nurse' &&
+        this.currentTargetLanguage.code !== 'tr' &&
+        transText.toLowerCase() === msg.originalText.trim().toLowerCase();
+
+      const existing = this.monitoredTurns.get(msg.id);
+
+      if (hasValidTranslation && !isEchoUntranslated) {
+        // Record confirmed translation into coordinator
+        speechCoordinator.recordTranslation(msg.originalText, transText);
+        if (existing) {
+          existing.isVerified = true;
+          existing.isSupervising = false;
+        }
         continue;
       }
-      if (now - turn.lastInputAt >= NO_ANSWER_AFTER_MS) {
-        this.openTurns.delete(turn.id);
-        void this.heal(turn);
+
+      // Needs audit supervision
+      if (!existing) {
+        this.monitoredTurns.set(msg.id, {
+          id: msg.id,
+          originalText: msg.originalText.trim(),
+          speaker: msg.speaker,
+          targetLanguageName: this.currentTargetLanguage.nameTr,
+          targetLanguageCode: this.currentTargetLanguage.code,
+          registeredAt: Date.now(),
+          attempts: 0,
+          isSupervising: false,
+          isVerified: false,
+          hasAudioPlayed: this.playedAudioIds.has(msg.id),
+        });
       }
     }
   }
 
-  private listenerLanguageCode(turn: LiveTurn): string {
-    return turn.speaker === 'nurse' ? this.hooks.getTargetLanguage()?.code || 'en' : 'tr';
+  /**
+   * Main background audit interval (checks every 500ms).
+   */
+  private startSupervisorLoop() {
+    if (this.auditInterval) clearInterval(this.auditInterval);
+
+    this.auditInterval = setInterval(() => {
+      this.executeAuditCycle();
+    }, 500);
   }
 
-  /** Translate the sentence here and speak it (the live interpreter was silent or unusable). */
-  private async heal(
-    turn: LiveTurn,
-    note = 'Canlı tercüman yanıt vermedi; çeviri denetçi tarafından yapıldı.'
-  ) {
-    const target = this.hooks.getTargetLanguage();
-    if (!target || turn.sourceText.trim().length < 2) return;
-    const gen = this.generation;
-    this.healedTurnIds.add(turn.id);
-    this.hooks.suppressLiveAudio(turn.id);
+  private async executeAuditCycle() {
+    if (this.isDestroyed) return;
 
+    // Periodically revive audio graph if session is supposed to be listening
+    if (this.currentSessionState === 'listening' && this.session) {
+      this.session.checkAndReviveAudioGraph().catch(() => {});
+    }
+
+    const now = Date.now();
+    // 2800ms gives Gemini Live ample time to naturally interpret, and triggers fallback quickly
+    // if live websocket connection dropped or lagged after a restart
+    const GRACE_PERIOD_MS = 2800;
+    const MAX_ATTEMPTS = 2;
+
+    for (const turn of Array.from(this.monitoredTurns.values())) {
+      if (turn.isVerified) continue;
+      if (turn.isSupervising) continue;
+      if (turn.attempts >= MAX_ATTEMPTS) continue;
+
+      const elapsed = now - turn.registeredAt;
+      if (elapsed < GRACE_PERIOD_MS) continue;
+
+      // Check if an authoritative translation is already cached
+      const cached = speechCoordinator.getExistingTranslation(turn.originalText);
+      if (cached) {
+        turn.isVerified = true;
+        this.callbacks.onUpdateMessage({
+          id: turn.id,
+          speaker: turn.speaker,
+          originalText: turn.originalText,
+          translatedText: cached,
+          timestamp: Date.now(),
+        });
+        continue;
+      }
+
+      // Sentence has stalled without translation! Supervisor intervenes immediately.
+      turn.isSupervising = true;
+      turn.attempts += 1;
+
+      this.healUntranslatedTurn(turn).finally(() => {
+        turn.isSupervising = false;
+      });
+    }
+  }
+
+  private async healUntranslatedTurn(turn: MonitoredTurn): Promise<void> {
     try {
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: turn.sourceText, targetLanguage: target.name, speaker: turn.speaker }),
-      });
-      if (!res.ok || gen !== this.generation) return;
-      const data = await res.json();
-      const translated: string = data.translatedText?.trim() || '';
-      if (!translated) return;
-
-      this.hooks.emitMessage({
-        ...turn.message,
-        translatedText: translated,
-        verification: 'healed',
-        verificationNote: note,
-      });
-      await this.hooks.speak(translated, this.listenerLanguageCode(turn));
-    } catch (err) {
-      console.warn('[TranslationGuard] Heal failed:', err);
-    }
-  }
-
-  /** Check a finished translation; correct it and speak the correction if it was wrong. */
-  private async verify(turn: LiveTurn) {
-    const target = this.hooks.getTargetLanguage();
-    if (!target) return;
-    const gen = this.generation;
-
-    // Fast local check: a translation in the speaker's own language is always wrong
-    const outputIsTurkish = detectSpeakerByLanguage(turn.translation, target.code);
-    const wrongDirection =
-      target.code !== 'tr' &&
-      outputIsTurkish.confidence >= 0.85 &&
-      outputIsTurkish.isTurkish === (turn.speaker === 'nurse');
-
-    this.hooks.emitMessage({ ...turn.message, verification: 'checking' });
-
-    let verdict: VerifyResponse | null = null;
-    try {
-      const res = await fetch('/api/verify-translation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          source: turn.sourceText,
-          translation: turn.translation,
-          targetLanguage: target.name,
+          text: turn.originalText,
+          targetLanguage: turn.targetLanguageName,
           speaker: turn.speaker,
         }),
       });
-      if (res.ok) verdict = await res.json();
-    } catch (err) {
-      console.warn('[TranslationGuard] Verify failed:', err);
-    }
-    if (gen !== this.generation) return;
 
-    if (!verdict?.checked) {
-      if (wrongDirection) {
-        // The checker is unavailable but the translation is plainly in the wrong language: redo it
-        this.noteCritical(['wrong_language']);
-        void this.heal(turn, 'Çeviri yanlış dilde yapılmıştı; denetçi yeniden çevirdi.');
+      if (!res.ok) {
         return;
       }
-      // Could not check: show no badge rather than claiming the translation was verified
-      this.hooks.emitMessage({ ...turn.message, verification: undefined });
-      return;
+
+      const transData = await res.json();
+      const translatedText = transData.translatedText?.trim();
+
+      if (!translatedText) {
+        return;
+      }
+
+      speechCoordinator.recordTranslation(turn.originalText, translatedText);
+
+      // Detect medical devices / tutorial videos
+      const tutorial = detectMedicalTutorialVideo(turn.originalText, translatedText);
+      const isNurseCall =
+        transData.showNurseCallTutorial || tutorial.type === 'nurse_call';
+      const showTutorial =
+        transData.showTutorialVideo || tutorial.shouldShow;
+      const tutorialType =
+        transData.tutorialVideoType || tutorial.type;
+      const videoUrl =
+        tutorialType === 'triflow'
+          ? TRIFLOW_VIDEO_URL
+          : tutorialType === 'nurse_call'
+            ? NURSE_CALL_VIDEO_URL
+            : transData.tutorialVideoUrl || tutorial.videoUrl;
+
+      const baseDosages = extractMedicalDosages(turn.originalText);
+      const translatedDosages = extractMedicalDosages(translatedText);
+
+      const healedMessage: TranscriptMessage = {
+        id: turn.id,
+        speaker: turn.speaker,
+        originalText: turn.originalText,
+        translatedText,
+        timestamp: Date.now(),
+        highlightedDosages: Array.from(new Set([...baseDosages, ...translatedDosages])),
+        showNurseCallTutorial: isNurseCall,
+        nurseCallTutorialVideoUrl: isNurseCall ? NURSE_CALL_VIDEO_URL : undefined,
+        showTutorialVideo: showTutorial,
+        tutorialVideoType: tutorialType || undefined,
+        tutorialVideoUrl: videoUrl,
+        tutorialVideoAltUrl: tutorial.altVideoUrl,
+        tutorialVideoTitle: tutorial.title,
+      };
+
+      turn.isVerified = true;
+      turn.isSupervising = false;
+
+      // Update transcript UI seamlessly
+      this.callbacks.onUpdateMessage(healedMessage);
+
+      // Trigger speech audio playback ONLY if session is active and never spoken before
+      const isSessionActive = this.currentSessionState !== 'idle' && this.currentSessionState !== 'error';
+      const canSpeak =
+        isSessionActive &&
+        !turn.hasAudioPlayed &&
+        !this.playedAudioIds.has(turn.id) &&
+        speechCoordinator.canVocalizeAutomatically(turn.id, translatedText);
+
+      if (canSpeak) {
+        this.playedAudioIds.add(turn.id);
+        turn.hasAudioPlayed = true;
+        speechCoordinator.markVocalized(turn.id, translatedText);
+
+        const langToSpeak =
+          turn.speaker === 'nurse' ? turn.targetLanguageCode : 'tr';
+
+        if (this.callbacks.onPlayAudio) {
+          this.callbacks.onPlayAudio(translatedText, langToSpeak);
+        } else {
+          this.playAudioDirect(translatedText, langToSpeak);
+        }
+      }
+    } catch {
+      // Quiet background retry on next cycle
     }
+  }
 
-    if (verdict.severity !== 'critical' || !verdict.correctedTranslation) {
-      this.noteResult(false);
-      this.hooks.emitMessage({ ...turn.message, verification: 'verified' });
-      return;
+  /**
+   * Fast background speech synthesis playback fallback.
+   */
+  private async playAudioDirect(text: string, languageCode: string) {
+    try {
+      const ttsRes = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          languageCode,
+          voiceName: this.activeVoiceName,
+        }),
+      });
+
+      if (ttsRes.ok) {
+        const { audio } = await ttsRes.json();
+        if (audio) {
+          await playNormalizedAudioWav(audio);
+        }
+      }
+    } catch {
+      // Speech note
     }
-
-    const corrected = verdict.correctedTranslation;
-    const note = verdict.issuesTr?.filter(Boolean).join(' · ') || 'Çeviri düzeltildi.';
-    this.hooks.emitMessage({
-      ...turn.message,
-      translatedText: corrected,
-      verification: 'corrected',
-      verificationNote: note,
-    });
-    this.noteCritical(verdict.issueTypes || []);
-
-    const lead = verdict.correctionLead?.trim();
-    await this.hooks.speak(lead ? `${lead} ${corrected}` : corrected, this.listenerLanguageCode(turn));
   }
 
-  private noteResult(critical: boolean) {
-    this.recentCritical.push(critical);
-    if (this.recentCritical.length > DRIFT_WINDOW) this.recentCritical.shift();
+  public recordAudioPlayed(msgId: string) {
+    this.playedAudioIds.add(msgId);
+    const turn = this.monitoredTurns.get(msgId);
+    if (turn) {
+      turn.hasAudioPlayed = true;
+    }
   }
 
-  private noteCritical(issueTypes: string[]) {
-    this.noteResult(true);
-    const behaviourProblem = issueTypes.some((t) => BEHAVIOUR_ISSUES.has(t));
-    const repeated = this.recentCritical.filter(Boolean).length >= DRIFT_CRITICAL_COUNT;
-    if (!behaviourProblem && !repeated) return;
-
-    const now = Date.now();
-    if (now - this.lastRecalibrationAt < RECALIBRATE_COOLDOWN_MS) return;
-    this.lastRecalibrationAt = now;
-    this.recentCritical = [];
-    this.hooks.recalibrate(behaviourProblem ? `behaviour:${issueTypes.join(',')}` : 'repeated critical errors');
+  public clear() {
+    this.monitoredTurns.clear();
+    this.playedAudioIds.clear();
   }
-}
 
-function isPlaceholder(text: string): boolean {
-  return /^\(.*konuşma\)$/i.test(text.trim());
+  public destroy() {
+    this.isDestroyed = true;
+    if (this.auditInterval) {
+      clearInterval(this.auditInterval);
+      this.auditInterval = null;
+    }
+    this.clear();
+  }
 }
